@@ -1,316 +1,630 @@
-# 🚀 Elba Programming Language# Elba Programming Language
+# 🚀 Elba Programming Language# 🚀 Elba Programming Language# Elba Programming Language
 
 
 
-<div align="center">A statically-typed programming language with generics, type inference, and a powerful module system.
+<div align="center">
 
 
 
-**A modern, statically-typed programming language with multiple compilation backends**## Features
+**A modern, statically-typed programming language with multiple compilation backends**<div align="center">A statically-typed programming language with generics, type inference, and a powerful module system.
 
 
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)- ✅ **Static Type System** - Compile-time type checking with inference
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-[![Zig](https://img.shields.io/badge/Zig-0.15.2-orange.svg)](https://ziglang.org/)- ✅ **Generics** - Full support for generic functions and structs with type parameters
+[![Zig](https://img.shields.io/badge/Zig-0.15.2-orange.svg)](https://ziglang.org/)
 
-[![Status](https://img.shields.io/badge/Status-Alpha-yellow.svg)]()- ✅ **Type Aliases** - Define custom type names for clarity
+[![Status](https://img.shields.io/badge/Status-Alpha-yellow.svg)]()**A modern, statically-typed programming language with multiple compilation backends**## Features
 
-- ✅ **Optional Types** - Built-in null safety with `T?` syntax
 
-[Features](#-features) •- ✅ **Union Types** - Express values that can be one of multiple types
 
-[Installation](#-installation) •- ✅ **Module System** - Organize code with imports and exports
+[Features](#-features) •
 
-[Quick Start](#-quick-start) •- ✅ **REPL Mode** - Interactive programming environment
+[Installation](#-installation) •
 
-[Examples](#-examples) •- ✅ **Standard Library** - Built-in functions for common tasks
+[Quick Start](#-quick-start) •[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)- ✅ **Static Type System** - Compile-time type checking with inference
 
-[Contributing](#-contributing)- ✅ **IR Optimization** - Intermediate representation with optimization passes
+[Examples](#-examples) •
 
-- ✅ **C Code Generation** - Compile to optimized C code
+[Contributing](#-contributing)[![Zig](https://img.shields.io/badge/Zig-0.15.2-orange.svg)](https://ziglang.org/)- ✅ **Generics** - Full support for generic functions and structs with type parameters
 
-</div>- ✅ **LLVM Backend** - Compile to native machine code via LLVM
 
-- ✅ **Multiple Backends** - AST interpreter, IR interpreter, C code, or LLVM
 
----
+</div>[![Status](https://img.shields.io/badge/Status-Alpha-yellow.svg)]()- ✅ **Type Aliases** - Define custom type names for clarity
 
-## Quick Start
 
-## 📖 About
 
-### Installation
+---- ✅ **Optional Types** - Built-in null safety with `T?` syntax
 
-Elba is a statically-typed programming language designed for clarity, performance, and developer productivity. It features a powerful type system with generics, type inference, and multiple compilation backends including **LLVM for native code generation**.
 
-Requires Zig 0.15.2 or later.
 
-### Why Elba?
+## 📖 About[Features](#-features) •- ✅ **Union Types** - Express values that can be one of multiple types
 
-```bash
 
-- 🎯 **Static Typing with Inference** - Type safety without verbose annotations# Clone the repository
 
-- ⚡ **Multiple Backends** - From rapid prototyping to native performance  git clone https://github.com/yourusername/elba.git
+Elba is a statically-typed programming language designed for clarity, performance, and developer productivity. It features a powerful type system with generics, type inference, and multiple compilation backends including **LLVM for native code generation**.[Installation](#-installation) •- ✅ **Module System** - Organize code with imports and exports
 
-- 🧩 **Generics** - Write reusable, type-safe codecd elba
+
+
+### Why Elba?[Quick Start](#-quick-start) •- ✅ **REPL Mode** - Interactive programming environment
+
+
+
+- 🎯 **Static Typing with Inference** - Type safety without verbose annotations[Examples](#-examples) •- ✅ **Standard Library** - Built-in functions for common tasks
+
+- ⚡ **Multiple Backends** - From rapid prototyping to native performance  
+
+- 🧩 **Generics** - Write reusable, type-safe code[Contributing](#-contributing)- ✅ **IR Optimization** - Intermediate representation with optimization passes
 
 - 🛡️ **Null Safety** - Optional types prevent null reference errors
 
-- 🔧 **Modern Tooling** - Interactive REPL, error reporting, benchmarks# Build the project
+- 🔧 **Modern Tooling** - Interactive REPL, error reporting, benchmarks- ✅ **C Code Generation** - Compile to optimized C code
 
-- 📦 **Module System** - Organize code effectivelyzig build
+- 📦 **Module System** - Organize code effectively
 
+</div>- ✅ **LLVM Backend** - Compile to native machine code via LLVM
 
+## ✨ Features
 
-## ✨ Features# Run the REPL
-
-./zig-out/bin/elba repl
+- ✅ **Multiple Backends** - AST interpreter, IR interpreter, C code, or LLVM
 
 ### Language Features
 
-- ✅ Static type checking with type inference# Run a file
+- ✅ Static type checking with type inference---
 
-- ✅ Generic functions and structs with type parameters./zig-out/bin/elba examples/hello_world.elba
+- ✅ Generic functions and structs with type parameters
 
-- ✅ Optional types (`T?`) for null safety```
+- ✅ Optional types (`T?`) for null safety## Quick Start
 
 - ✅ Union types (`A | B | C`)
 
-- ✅ Type aliases for better code documentation## Usage
+- ✅ Type aliases for better code documentation## 📖 About
 
 - ✅ First-class functions
 
-- ✅ Arrays with rich operations### Command Line Interface
+- ✅ Arrays with rich operations### Installation
 
 - ✅ Structs with methods
 
-- ✅ Module system with imports and exports```bash
+- ✅ Module system with imports and exportsElba is a statically-typed programming language designed for clarity, performance, and developer productivity. It features a powerful type system with generics, type inference, and multiple compilation backends including **LLVM for native code generation**.
 
-# Show help
 
-### Compiler & Toolingelba --help
+
+### Compiler & ToolingRequires Zig 0.15.2 or later.
 
 - 🚀 **Multiple Execution Backends**
 
-  - AST Interpreter (instant execution)# Run a program (AST interpreter)
+  - AST Interpreter (instant execution)### Why Elba?
 
-  - IR Interpreter (5x faster)elba program.elba
+  - IR Interpreter (5x faster)
 
-  - C Code Generator (50x faster)
+  - C Code Generator (50x faster)```bash
 
-  - **LLVM Backend (100x faster)** ⚡# Run with IR interpreter
+  - **LLVM Backend (100x faster)** ⚡
 
-  elba --ir program.elba
+  - 🎯 **Static Typing with Inference** - Type safety without verbose annotations# Clone the repository
 
 - 🛠️ **Developer Tools**
 
-  - Interactive REPL with history# Type check only (no execution)
+  - Interactive REPL with history- ⚡ **Multiple Backends** - From rapid prototyping to native performance  git clone https://github.com/yourusername/elba.git
 
-  - Comprehensive error messageselba --check program.elba
+  - Comprehensive error messages
 
-  - Performance benchmarking
+  - Performance benchmarking- 🧩 **Generics** - Write reusable, type-safe codecd elba
 
-  - IR visualization# Compile to C
+  - IR visualization
 
-  - Verbose debugging modeelba --compile --emit-c program.elba
+  - Verbose debugging mode- 🛡️ **Null Safety** - Optional types prevent null reference errors
 
-# This generates program.c
 
-### Standard Library
 
-- 📐 **Math Module** - Trigonometry, power, square root, abs, etc.# Compile to C and build executable (requires gcc)
+### Standard Library- 🔧 **Modern Tooling** - Interactive REPL, error reporting, benchmarks# Build the project
 
-- 📝 **String Module** - Manipulation, trimming, padding, repetitionelba --compile --compile-c program.elba
+- 📐 **Math Module** - Trigonometry, power, square root, abs, etc.
 
-# This generates program.c and program.exe
+- 📝 **String Module** - Manipulation, trimming, padding, repetition- 📦 **Module System** - Organize code effectivelyzig build
+
+
 
 ## 🚀 Installation
 
-# Compile to LLVM IR
-
-### Prerequisiteselba --compile --emit-llvm program.elba
-
-- **Zig 0.15.2** or later ([Download](https://ziglang.org/download/))# This generates program.ll
-
-- (Optional) **LLVM 20** for native compilation
-
-- (Optional) **GCC or Clang** for C code compilation# Compile to native binary via LLVM (requires llc and gcc)
-
-elba --compile --compile-llvm program.elba
-
-### Building from Source# This generates program.ll, program.o, and program.exe
 
 
+### Prerequisites## ✨ Features# Run the REPL
 
-```bash# Show IR (intermediate representation)
+- **Zig 0.15.2** or later ([Download](https://ziglang.org/download/))
 
-# Clone the repositoryelba --show-ir program.elba
+- (Optional) **LLVM 20** for native compilation./zig-out/bin/elba repl
+
+- (Optional) **GCC or Clang** for C code compilation
+
+### Language Features
+
+### Building from Source
+
+- ✅ Static type checking with type inference# Run a file
+
+```bash
+
+# Clone the repository- ✅ Generic functions and structs with type parameters./zig-out/bin/elba examples/hello_world.elba
 
 git clone https://github.com/yourusername/elba.git
 
-cd elba# Optimize and show IR
+cd elba- ✅ Optional types (`T?`) for null safety```
 
-elba --optimize --show-ir program.elba
 
-# Build the compiler
 
-zig build# Start interactive REPL
+# Build the compiler- ✅ Union types (`A | B | C`)
 
-elba repl
+zig build
+
+- ✅ Type aliases for better code documentation## Usage
 
 # Verify installation
 
-./zig-out/bin/elba --version# Show version
-
-```elba --version
+./zig-out/bin/elba --version- ✅ First-class functions
 
 ```
+
+- ✅ Arrays with rich operations### Command Line Interface
 
 ### Quick Test
 
-## Compilation Backends
+- ✅ Structs with methods
 
 ```bash
 
-# Run an exampleElba supports multiple execution backends:
+# Run an example- ✅ Module system with imports and exports```bash
 
 ./zig-out/bin/elba examples/hello_world.elba
 
-### 1. AST Interpreter (Default)
+# Show help
 
-# Start the REPLFast startup, no compilation needed. Best for development and testing.
+# Start the REPL
 
-./zig-out/bin/elba repl```bash
-
-```elba program.elba
+./zig-out/bin/elba repl### Compiler & Toolingelba --help
 
 ```
+
+- 🚀 **Multiple Execution Backends**
 
 ## 🏁 Quick Start
 
-### 2. IR Interpreter
+  - AST Interpreter (instant execution)# Run a program (AST interpreter)
 
-### Hello WorldOptimized intermediate representation. Good balance of speed and startup time.
+### Hello World
 
-```bash
+  - IR Interpreter (5x faster)elba program.elba
 
-```elbaelba --ir program.elba
+```elba
 
-// hello_world.elba```
+// hello_world.elba  - C Code Generator (50x faster)
 
 println("Hello, World!");
 
-```### 3. C Code Generation
+```  - **LLVM Backend (100x faster)** ⚡# Run with IR interpreter
 
-Compiles to C code for maximum portability. Requires GCC.
 
-Run it:```bash
 
-```bash# Generate C code only
+Run it:  elba --ir program.elba
 
-./zig-out/bin/elba hello_world.elbaelba --compile --emit-c program.elba  # Creates program.c
+```bash
+
+./zig-out/bin/elba hello_world.elba- 🛠️ **Developer Tools**
 
 ```
 
-# Compile to executable
+  - Interactive REPL with history# Type check only (no execution)
+
+### Functions and Types
+
+  - Comprehensive error messageselba --check program.elba
+
+```elba
+
+// Calculate Fibonacci numbers  - Performance benchmarking
+
+fn fibonacci(n: int) -> int {
+
+    if (n <= 1) {  - IR visualization# Compile to C
+
+        n
+
+    } else {  - Verbose debugging modeelba --compile --emit-c program.elba
+
+        fibonacci(n - 1) + fibonacci(n - 2)
+
+    }# This generates program.c
+
+}
+
+### Standard Library
+
+const result: int = fibonacci(10);
+
+println(int_to_str(result));  // Output: 55- 📐 **Math Module** - Trigonometry, power, square root, abs, etc.# Compile to C and build executable (requires gcc)
+
+```
+
+- 📝 **String Module** - Manipulation, trimming, padding, repetitionelba --compile --compile-c program.elba
+
+### Generics
+
+# This generates program.c and program.exe
+
+```elba
+
+// Generic function## 🚀 Installation
+
+fn identity<T>(x: T) -> T {
+
+    x# Compile to LLVM IR
+
+}
+
+### Prerequisiteselba --compile --emit-llvm program.elba
+
+// Generic struct
+
+struct Box<T> {- **Zig 0.15.2** or later ([Download](https://ziglang.org/download/))# This generates program.ll
+
+    value: T;
+
+}- (Optional) **LLVM 20** for native compilation
+
+
+
+const int_box: Box<int> = Box { value: 42; };- (Optional) **GCC or Clang** for C code compilation# Compile to native binary via LLVM (requires llc and gcc)
+
+const str_box: Box<str> = Box { value: "Hello"; };
+
+```elba --compile --compile-llvm program.elba
+
+
+
+## 📚 Usage### Building from Source# This generates program.ll, program.o, and program.exe
+
+
+
+### Command Line Interface
+
+
+
+```bash```bash# Show IR (intermediate representation)
+
+# Basic execution (AST Interpreter)
+
+elba program.elba# Clone the repositoryelba --show-ir program.elba
+
+
+
+# Type check onlygit clone https://github.com/yourusername/elba.git
+
+elba --check program.elba
+
+cd elba# Optimize and show IR
+
+# Execute with IR interpreter (faster)
+
+elba --compile --run-ir program.elbaelba --optimize --show-ir program.elba
+
+
+
+# Compile to C# Build the compiler
+
+elba --compile --emit-c program.elba       # Generates program.c
+
+elba --compile --compile-c program.elba    # Generates and compiles to .exezig build# Start interactive REPL
+
+
+
+# Compile to LLVM IRelba repl
+
+elba --compile --emit-llvm program.elba    # Generates program.ll
+
+elba --compile --compile-llvm program.elba # Compiles to native binary# Verify installation
+
+
+
+# Optimization./zig-out/bin/elba --version# Show version
+
+elba --compile -O --run-ir program.elba    # Run with optimizations
+
+```elba --version
+
+# Debugging
+
+elba --verbose program.elba                # Verbose output```
+
+elba --compile --show-ir program.elba      # Show IR representation
+
+### Quick Test
+
+# Interactive mode
+
+elba repl                                   # Start REPL## Compilation Backends
+
+
+
+# Benchmarking```bash
+
+elba benchmark                              # Run performance tests
+
+```# Run an exampleElba supports multiple execution backends:
+
+
+
+### Compilation Backends Comparison./zig-out/bin/elba examples/hello_world.elba
+
+
+
+| Backend | Speed | Compile Time | Use Case |### 1. AST Interpreter (Default)
+
+|---------|-------|--------------|----------|
+
+| **AST Interpreter** | 1x | Instant | Development, debugging |# Start the REPLFast startup, no compilation needed. Best for development and testing.
+
+| **IR Interpreter** | 5x | Instant | Testing, prototyping |
+
+| **IR Optimized** | 10x | Instant | Fast interpretation |./zig-out/bin/elba repl```bash
+
+| **C Compiled** | 50x | ~1-2s | Production (portable) |
+
+| **LLVM Compiled** | 100x | ~0.5s | Production (native) |```elba program.elba
+
+
+
+### Interactive REPL```
+
+
+
+```bash## 🏁 Quick Start
+
+$ elba repl
+
+Elba REPL v0.1.0### 2. IR Interpreter
+
+Type 'help' for help, 'exit' to quit
+
+### Hello WorldOptimized intermediate representation. Good balance of speed and startup time.
+
+>>> const x: int = 42
+
+>>> const y: int = x * 2```bash
+
+>>> println(int_to_str(y))
+
+84```elbaelba --ir program.elba
+
+>>> fn double(n: int) -> int { n * 2 }
+
+>>> double(21)// hello_world.elba```
+
+42
+
+```println("Hello, World!");
+
+
+
+## 💡 Examples```### 3. C Code Generation
+
+
+
+### Arrays and LoopsCompiles to C code for maximum portability. Requires GCC.
+
+
+
+```elbaRun it:```bash
+
+const numbers: []int = [1, 2, 3, 4, 5];
+
+```bash# Generate C code only
+
+let sum: int = 0;
+
+for (num in numbers) {./zig-out/bin/elba hello_world.elbaelba --compile --emit-c program.elba  # Creates program.c
+
+    sum = sum + num;
+
+}```
+
+
+
+println(int_to_str(sum));  // Output: 15# Compile to executable
+
+```
 
 ### Functions and Typeselba --compile --compile-c program.elba  # Creates program.exe
+
+### Structs
 
 ```
 
 ```elba
 
-// Calculate Fibonacci numbers### 4. LLVM Native Compilation ⚡
+struct Point {```elba
+
+    x: int;
+
+    y: int;// Calculate Fibonacci numbers### 4. LLVM Native Compilation ⚡
+
+}
 
 fn fibonacci(n: int) -> int {Compiles directly to native machine code via LLVM. Best performance!
 
-    if (n <= 1) {Requires LLVM tools (`llc`) and GCC.
+const p1: Point = Point { x: 0; y: 0; };
+
+const p2: Point = Point { x: 3; y: 4; };    if (n <= 1) {Requires LLVM tools (`llc`) and GCC.
+
+```
 
         n```bash
 
+### Module System
+
     } else {# Generate LLVM IR only
 
-        fibonacci(n - 1) + fibonacci(n - 2)elba --compile --emit-llvm program.elba  # Creates program.ll
+```elba
 
-    }
+// math_utils.elba        fibonacci(n - 1) + fibonacci(n - 2)elba --compile --emit-llvm program.elba  # Creates program.ll
+
+export fn square(x: int) -> int {
+
+    x * x    }
+
+}
 
 }# Compile to native executable
 
-elba --compile --compile-llvm program.elba  # Creates program.exe
+// main.elba
 
-const result: int = fibonacci(10);```
+import "math_utils" as math;elba --compile --compile-llvm program.elba  # Creates program.exe
 
-println(int_to_str(result));  // Output: 55
 
-```**Performance Comparison:**
 
-- AST Interpreter: ~1x (baseline)
+const result: int = math.square(5);const result: int = fibonacci(10);```
 
-### Generics- IR Interpreter: ~5x faster
+println(int_to_str(result));  // Output: 25
 
-- C Compiled: ~50x faster
+```println(int_to_str(result));  // Output: 55
 
-```elba- LLVM Compiled: ~100x faster
+
+
+### More Examples```**Performance Comparison:**
+
+
+
+Check out the `examples/` directory:- AST Interpreter: ~1x (baseline)
+
+- `hello_world.elba` - Basic hello world
+
+- `fibonacci.elba` - Recursive Fibonacci### Generics- IR Interpreter: ~5x faster
+
+- `arrays.elba` - Array operations
+
+- `generics.elba` - Generic programming- C Compiled: ~50x faster
+
+- `structs.elba` - Struct usage
+
+- `llvm_demo.elba` - LLVM backend demonstration```elba- LLVM Compiled: ~100x faster
+
+- And more!
 
 // Generic function
 
+## 🏗️ Architecture
+
 fn identity<T>(x: T) -> T {### Hello World
 
-    x
+```
 
-}```elba
+Source Code → Lexer → Parser → Type Checker → IR Generator →     x
 
-// hello_world.elba
+  → Optimizer → Backend (AST/IR/C/LLVM) → Output
 
-// Generic structprintln("Hello, World!");
-
-struct Box<T> {```
-
-    value: T;
-
-}### Variables and Types
+```}```elba
 
 
 
-const int_box: Box<int> = Box { value: 42; };```elba
+## 🧪 Testing// hello_world.elba
 
-const str_box: Box<str> = Box { value: "Hello"; };// Constant declaration
 
-```const x: int = 42;
 
-const message: str = "Hello";
+```bash// Generic structprintln("Hello, World!");
 
-## 📚 Usage
+# Run examples
 
-// Mutable variables
+./zig-out/bin/elba examples/fibonacci.elbastruct Box<T> {```
+
+
+
+# Run tests    value: T;
+
+./zig-out/bin/elba tests/test_functions.elba
+
+```}### Variables and Types
+
+
+
+## 🤝 Contributing
+
+
+
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.const int_box: Box<int> = Box { value: 42; };```elba
+
+
+
+## 📊 Project Statusconst str_box: Box<str> = Box { value: "Hello"; };// Constant declaration
+
+
+
+**Current Version:** 0.1.0 (Alpha)```const x: int = 42;
+
+
+
+### What Worksconst message: str = "Hello";
+
+- ✅ Core language features
+
+- ✅ Type system with generics## 📚 Usage
+
+- ✅ Multiple backends (AST, IR, C, LLVM)
+
+- ✅ REPL and tooling// Mutable variables
+
+- ✅ Standard library basics
 
 ### Command Line Interfacelet counter: int = 0;
 
-counter = counter + 1;
+### Known Limitations
 
-```bash
+- ⚠️ Control flow limited in LLVM backendcounter = counter + 1;
+
+- ⚠️ No garbage collection yet
+
+- ⚠️ Module system is basic```bash
+
+- ⚠️ Standard library needs expansion
 
 # Basic execution (AST Interpreter)// Type inference
 
+## 📜 License
+
 elba program.elbaconst y = 10;  // inferred as int
+
+Elba is released under the [MIT License](LICENSE).
 
 const name = "Alice";  // inferred as str
 
+## 🙏 Acknowledgments
+
 # Type check only```
 
-elba --check program.elba
+- Built with [Zig](https://ziglang.org/)
+
+- Powered by [LLVM](https://llvm.org/)elba --check program.elba
+
+- Inspired by Rust, TypeScript, and ML-family languages
 
 ### Functions
 
+---
+
 # Execute with IR interpreter (faster)
+
+<div align="center">
 
 elba --compile --run-ir program.elba```elba
 
+**Made with ❤️ by the Elba Community**
+
 // Function definition
 
+[⬆ Back to top](#-elba-programming-language)
+
 # Compile to Cfn add(a: int, b: int) -> int {
+
+</div>
 
 elba --compile --emit-c program.elba       # Generates program.c    a + b
 
