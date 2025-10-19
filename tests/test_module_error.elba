@@ -1,0 +1,8 @@
+// Test Module Errors
+
+println("=== Testing Module Error Handling ===");
+
+// This should fail - file doesn't exist
+take "nonexistent_module.elba";
+
+println("Should not reach here");

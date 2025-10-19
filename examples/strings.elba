@@ -1,0 +1,71 @@
+// String Operations Examples
+
+println("=== String Operations ===");
+println("");
+
+// Basic string operations
+println("1. String concatenation:");
+const hello: str = "Hello";
+const world: str = "World";
+const greeting: str = str_concat(hello, str_concat(", ", str_concat(world, "!")));
+println(greeting);
+println("");
+
+// String length
+println("2. String length:");
+const message: str = "Elba Programming Language";
+const len: int = str_len(message);
+println(str_concat("Message: ", message));
+println(str_concat("Length: ", int_to_str(len)));
+println("");
+
+// Building strings
+println("3. Building strings:");
+const part1: str = "The";
+const part2: str = " quick";
+const part3: str = " brown";
+const part4: str = " fox";
+const sentence: str = str_concat(part1, str_concat(part2, str_concat(part3, part4)));
+println(sentence);
+println("");
+
+// String with numbers
+println("4. String with numbers:");
+const name: str = "Alice";
+const age: int = 25;
+const score: int = 95;
+const info: str = str_concat(name, str_concat(" is ", str_concat(int_to_str(age), str_concat(" years old and scored ", int_to_str(score)))));
+println(info);
+println("");
+
+// Dynamic string building
+println("5. Dynamic string building:");
+fn repeat_char(ch: str, count: int) -> str {
+    let result: str = "";
+    let i: int = 0;
+    while (i < count) {
+        result = str_concat(result, ch);
+        i = i + 1;
+    }
+    return result;
+}
+
+const stars: str = repeat_char("*", 10);
+const dashes: str = repeat_char("-", 10);
+println(stars);
+println("  Elba");
+println(dashes);
+println("");
+
+// String formatting
+println("6. Formatted output:");
+fn format_person(name: str, age: int, city: str) -> str {
+    str_concat(str_concat(name, str_concat(" (", int_to_str(age))), str_concat(") from ", city))
+}
+
+println(format_person("Alice", 25, "Boston"));
+println(format_person("Bob", 30, "Seattle"));
+println(format_person("Charlie", 35, "Austin"));
+println("");
+
+println("=== String Operations Complete ===");

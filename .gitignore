@@ -1,0 +1,31 @@
+# Zig build artifacts
+zig-out/
+zig-cache/
+.zig-cache/
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Elba compiled output
+*.o
+*.so
+*.dylib
+*.dll
+*.exe
+
+# Test output
+test_output/
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+.~*

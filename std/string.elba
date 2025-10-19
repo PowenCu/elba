@@ -1,0 +1,84 @@
+// Standard String Library for Elba
+// Provides string manipulation utilities
+
+// Check if string is empty
+fn is_empty(s: str) -> bool {
+    return str_len(s) == 0;
+}
+
+// Check if string starts with prefix
+fn starts_with(s: str, prefix: str) -> bool {
+    const s_len: int = str_len(s);
+    const prefix_len: int = str_len(prefix);
+    
+    if (prefix_len > s_len) {
+        return false;
+    }
+    
+    const sub: str = str_substring(s, 0, prefix_len);
+    return sub == prefix;
+}
+
+// Check if string ends with suffix
+fn ends_with(s: str, suffix: str) -> bool {
+    const s_len: int = str_len(s);
+    const suffix_len: int = str_len(suffix);
+    
+    if (suffix_len > s_len) {
+        return false;
+    }
+    
+    const start: int = s_len - suffix_len;
+    const sub: str = str_substring(s, start, s_len);
+    return sub == suffix;
+}
+
+// Repeat string n times
+fn repeat(s: str, n: int) -> str {
+    if (n <= 0) {
+        return "";
+    }
+    
+    let result: str = "";
+    let i: int = 0;
+    while (n > i) {
+        result = str_concat(result, s);
+        i = i + 1;
+    }
+    result
+}
+
+// Join array of strings with separator
+// (Would work better with actual arrays, but showing concept)
+fn join_two(s1: str, s2: str, sep: str) -> str {
+    return str_concat(str_concat(s1, sep), s2);
+}
+
+fn join_three(s1: str, s2: str, s3: str, sep: str) -> str {
+    const first: str = str_concat(str_concat(s1, sep), s2);
+    return str_concat(str_concat(first, sep), s3);
+}
+
+// Pad string to the left with spaces
+fn pad_left(s: str, total_len: int) -> str {
+    const s_len: int = str_len(s);
+    if (s_len >= total_len) {
+        return s;
+    }
+    
+    const pad_count: int = total_len - s_len;
+    const padding: str = repeat(" ", pad_count);
+    return str_concat(padding, s);
+}
+
+// Pad string to the right with spaces
+fn pad_right(s: str, total_len: int) -> str {
+    const s_len: int = str_len(s);
+    if (s_len >= total_len) {
+        return s;
+    }
+    
+    const pad_count: int = total_len - s_len;
+    const padding: str = repeat(" ", pad_count);
+    return str_concat(s, padding);
+}

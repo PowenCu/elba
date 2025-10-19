@@ -1,0 +1,80 @@
+// Array comprehensive tests
+
+println("=== Array Tests ===");
+println("");
+
+// Test 1: Array creation and access
+const arr1: []int = [1, 2, 3, 4, 5];
+const first: int = arr1[0];
+const last: int = arr1[4];
+println(str_concat("Test 1a - first element: ", if (first == 1) { "PASS" } else { "FAIL" }));
+println(str_concat("Test 1b - last element: ", if (last == 5) { "PASS" } else { "FAIL" }));
+
+// Test 2: Array with different values
+const arr2: []int = [10, 20, 30, 40, 50];
+const mid: int = arr2[2];
+println(str_concat("Test 2 - middle element: ", if (mid == 30) { "PASS" } else { "FAIL" }));
+
+// Test 3: String arrays
+const names: []str = ["Alice", "Bob", "Charlie"];
+const name1: str = names[0];
+const name2: str = names[2];
+println(str_concat("Test 3a - first name: ", if (str_len(name1) == 5) { "PASS" } else { "FAIL" }));
+println(str_concat("Test 3b - last name length: ", if (str_len(name2) == 7) { "PASS" } else { "FAIL" }));
+
+// Test 4: Array iteration
+const numbers: []int = [2, 4, 6, 8, 10];
+let sum: int = 0;
+let i: int = 0;
+while (i < 5) {
+    sum = sum + numbers[i];
+    i = i + 1;
+}
+println(str_concat("Test 4 - array sum: ", if (sum == 30) { "PASS" } else { "FAIL" }));
+
+// Test 5: Finding max in array
+const values: []int = [15, 3, 9, 22, 7];
+let max_val: int = values[0];
+let j: int = 1;
+while (j < 5) {
+    if (values[j] > max_val) {
+        max_val = values[j];
+    }
+    j = j + 1;
+}
+println(str_concat("Test 5 - max value: ", if (max_val == 22) { "PASS" } else { "FAIL" }));
+
+// Test 6: Finding min in array
+const nums: []int = [8, 3, 12, 1, 9];
+let min_val: int = nums[0];
+let k: int = 1;
+while (k < 5) {
+    if (nums[k] < min_val) {
+        min_val = nums[k];
+    }
+    k = k + 1;
+}
+println(str_concat("Test 6 - min value: ", if (min_val == 1) { "PASS" } else { "FAIL" }));
+
+// Test 7: Count matching elements
+const data: []int = [1, 2, 3, 2, 5, 2, 7];
+let count: int = 0;
+let m: int = 0;
+while (m < 7) {
+    if (data[m] == 2) {
+        count = count + 1;
+    }
+    m = m + 1;
+}
+println(str_concat("Test 7 - count 2s: ", if (count == 3) { "PASS" } else { "FAIL" }));
+
+// Test 8: Array with function
+fn process_array(arr: []int, idx: int) -> int {
+    arr[idx] * 2
+}
+
+const doubled: int = process_array(arr1, 2);
+println(str_concat("Test 8 - process array: ", if (doubled == 6) { "PASS" } else { "FAIL" }));
+
+println("");
+println("=== All Array Tests Complete ===");

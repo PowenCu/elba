@@ -1,0 +1,30 @@
+// LLVM Backend Demo
+// This file demonstrates working features of the LLVM backend
+
+println("=== Elba LLVM Backend Demo ===");
+println("");
+
+// Constants and arithmetic
+const a: int = 10;
+const b: int = 20;
+const c: int = 5;
+
+println("Arithmetic Operations:");
+println(int_to_str(a + b));
+println(int_to_str(a * b));
+println(int_to_str(b - a));
+println(int_to_str(b / c));
+println(int_to_str(b % c));
+println("");
+
+// Complex expressions
+const x: int = 2;
+const y: int = 3;
+const z: int = 4;
+const result: int = x * y + z;
+
+println("Complex Expression:");
+println(int_to_str(result));
+println("");
+
+println("=== Demo Complete! ===");

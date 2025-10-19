@@ -1,0 +1,10 @@
+// Test module B
+// Imports from module A
+
+take "test_module_a.elba";
+
+fn module_b_fn() -> int {
+    module_a_fn() + 10
+}
+
+const MODULE_B_CONST: int = MODULE_A_CONST + 50;

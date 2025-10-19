@@ -1,0 +1,91 @@
+// Test Error Handling
+
+println("=== Testing Error Handling ===");
+println("");
+
+// Test 1: Type mismatch errors (should be caught at type-check time)
+println("Test 1: Type safety");
+const x: int = 42;
+const y: str = "hello";
+// const bad: int = y;  // Should fail type check - uncomment to test
+
+// Test 2: Undefined variable
+println("Test 2: Scope checking");
+{
+    const inner: int = 100;
+}
+// println(int_to_str(inner));  // Should fail - uncomment to test
+
+// Test 3: Function argument count
+println("Test 3: Function calls");
+fn add_three(a: int, b: int, c: int) -> int {
+    a + b + c
+}
+const sum: int = add_three(1, 2, 3);
+println(int_to_str(sum));
+// const bad_call: int = add_three(1, 2);  // Should fail - uncomment to test
+
+// Test 4: Invalid array access (runtime - should we check bounds?)
+println("Test 4: Array access");
+const arr: []int = [1, 2, 3];
+const valid: int = arr[0];
+println(int_to_str(valid));
+// const invalid: int = arr[10];  // May cause runtime error
+
+// Test 5: Struct field access
+println("Test 5: Struct fields");
+struct Person {
+    name: str;
+    age: int;
+}
+const person: Person = Person { name: "Alice"; age: 30 };
+println(person.name);
+// println(person.invalid);  // Should fail type check
+
+// Test 6: Division by zero (runtime)
+println("Test 6: Division operations");
+const safe: int = 10 / 2;
+println(int_to_str(safe));
+// const unsafe: int = 10 / 0;  // May cause runtime error
+
+// Test 7: String operations bounds
+println("Test 7: String bounds");
+const str1: str = "hello";
+const sub1: str = str_substring(str1, 0, 3);
+println(sub1);
+// const sub2: str = str_substring(str1, 0, 100);  // Out of bounds
+
+// Test 8: Null safety
+println("Test 8: Null operations");
+let opt: int? = 42;
+if (opt != null) {
+    println("Has value");
+}
+opt = null;
+if (opt == null) {
+    println("Is null now");
+}
+
+// Test 9: Recursive function (potential stack overflow)
+println("Test 9: Recursion");
+fn factorial(n: int) -> int {
+    if (n <= 1) {
+        return 1;
+    }
+    n * factorial(n - 1)
+}
+const fact5: int = factorial(5);
+println(int_to_str(fact5));
+// const fact_overflow: int = factorial(100000);  // May overflow
+
+// Test 10: Generic type safety
+println("Test 10: Generics");
+struct Box<T> {
+    value: T;
+}
+const int_box: Box<int> = Box<int> { value: 42 };
+println(int_to_str(int_box.value));
+// const bad_box: Box<int> = Box<int> { value: "string" };  // Should fail
+
+println("");
+println("=== All Error Handling Tests Complete ===");

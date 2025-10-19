@@ -1,0 +1,157 @@
+// Comprehensive Generics Testing
+
+println("=== Testing Generics ===");
+println("");
+
+// Test 1: Basic generic struct
+println("Test 1: Basic generic struct");
+struct Box<T> {
+    value: T;
+}
+
+const int_box: Box<int> = Box<int> { value: 42 };
+const str_box: Box<str> = Box<str> { value: "hello" };
+const float_box: Box<float> = Box<float> { value: 3.14 };
+
+println(int_to_str(int_box.value));
+println(str_box.value);
+println(float_to_str(float_box.value));
+
+// Test 2: Generic functions
+println("");
+println("Test 2: Generic functions");
+fn identity<T>(x: T) -> T {
+    x
+}
+
+const id_int: int = identity<int>(100);
+const id_str: str = identity<str>("test");
+const id_float: float = identity<float>(2.5);
+
+println(int_to_str(id_int));
+println(id_str);
+println(float_to_str(id_float));
+
+// Test 3: Generic struct with multiple type parameters
+println("");
+println("Test 3: Multiple type parameters");
+struct Pair<A, B> {
+    first: A;
+    second: B;
+}
+
+const pair1: Pair<int, str> = Pair<int, str> { first: 10; second: "ten" };
+const pair2: Pair<str, float> = Pair<str, float> { first: "pi"; second: 3.14 };
+
+println(int_to_str(pair1.first));
+println(pair1.second);
+println(pair2.first);
+println(float_to_str(pair2.second));
+
+// Test 4: Generic function with multiple parameters
+println("");
+println("Test 4: Generic function with multiple params");
+fn swap<A, B>(x: A, y: B) -> Pair<B, A> {
+    Pair<B, A> { first: y; second: x }
+}
+
+const swapped: Pair<str, int> = swap<int, str>(42, "answer");
+println(swapped.first);
+println(int_to_str(swapped.second));
+
+// Test 5: Nested generics
+println("");
+println("Test 5: Nested generics");
+const nested: Box<Box<int>> = Box<Box<int>> { 
+    value: Box<int> { value: 99 }
+};
+println(int_to_str(nested.value.value));
+
+// Test 6: Generic with arrays
+println("");
+println("Test 6: Generics with arrays");
+struct Container<T> {
+    items: []T;
+}
+
+const int_container: Container<int> = Container<int> { 
+    items: [1, 2, 3, 4, 5]
+};
+println(int_to_str(int_container.items[0]));
+println(int_to_str(int_container.items[4]));
+
+// Test 7: Generic optional types
+println("");
+println("Test 7: Generic optionals");
+struct Maybe<T> {
+    value: T?;
+}
+
+let maybe_int: Maybe<int> = Maybe<int> { value: 42 };
+if (maybe_int.value != null) {
+    println("Has int value");
+}
+
+maybe_int = Maybe<int> { value: null };
+if (maybe_int.value == null) {
+    println("Int is null");
+}
+
+// Test 8: Generic function returning generic
+println("");
+println("Test 8: Generic function chains");
+fn wrap<T>(x: T) -> Box<T> {
+    Box<T> { value: x }
+}
+
+const wrapped_int: Box<int> = wrap<int>(777);
+const wrapped_str: Box<str> = wrap<str>("wrapped");
+
+println(int_to_str(wrapped_int.value));
+println(wrapped_str.value);
+
+// Test 9: Complex nested generics
+println("");
+println("Test 9: Complex nesting");
+struct Triple<A, B, C> {
+    first: A;
+    second: B;
+    third: C;
+}
+
+const complex: Triple<Box<int>, Pair<str, float>, bool> = Triple<Box<int>, Pair<str, float>, bool> {
+    first: Box<int> { value: 1 };
+    second: Pair<str, float> { first: "two"; second: 3.0 };
+    third: true
+};
+
+println(int_to_str(complex.first.value));
+println(complex.second.first);
+println(float_to_str(complex.second.second));
+
+// Test 10: Generic structs with methods
+println("");
+println("Test 10: Generic struct methods");
+struct Counter<T> {
+    value: T;
+    count: int;
+    
+    fn increment(self: Counter<T>) -> Counter<T> {
+        Counter<T> { value: self.value; count: self.count + 1 }
+    }
+    
+    fn get_count(self: Counter<T>) -> int {
+        self.count
+    }
+}
+
+let counter: Counter<str> = Counter<str> { value: "test"; count: 0 };
+counter = counter.increment();
+counter = counter.increment();
+counter = counter.increment();
+
+println(int_to_str(counter.get_count()));
+println(counter.value);
+
+println("");
+println("=== All Generic Tests Complete ===");

@@ -1,0 +1,68 @@
+// Generic Data Structures Example
+
+// Generic Box container
+struct Box<T> {
+    value: T;
+    
+    fn get(self: Box<T>) -> T {
+        self.value
+    }
+    
+    fn set(self: Box<T>, new_value: T) -> Box<T> {
+        Box<T> { value: new_value }
+    }
+}
+
+// Generic Pair
+struct Pair<A, B> {
+    first: A;
+    second: B;
+    
+    fn swap(self: Pair<A, B>) -> Pair<B, A> {
+        Pair<B, A> { first: self.second; second: self.first }
+    }
+}
+
+// Generic Result type
+struct Result<T, E> {
+    ok: T?;
+    err: E?;
+    
+    fn is_ok(self: Result<T, E>) -> bool {
+        self.ok != null
+    }
+    
+    fn is_err(self: Result<T, E>) -> bool {
+        self.err != null
+    }
+}
+
+println("=== Generic Data Structures ===");
+println("");
+
+// Box examples
+const int_box: Box<int> = Box<int> { value: 42 };
+println(str_concat("Integer box: ", int_to_str(int_box.get())));
+
+const str_box: Box<str> = Box<str> { value: "Hello, Generics!" };
+println(str_concat("String box: ", str_box.get()));
+
+// Pair example
+const pair: Pair<int, str> = Pair<int, str> { first: 100; second: "value" };
+println(str_concat("Pair first: ", int_to_str(pair.first)));
+println(str_concat("Pair second: ", pair.second));
+
+const swapped: Pair<str, int> = pair.swap();
+println(str_concat("Swapped first: ", swapped.first));
+println(str_concat("Swapped second: ", int_to_str(swapped.second)));
+
+// Result example
+const success: Result<int, str> = Result<int, str> { ok: 42; err: null };
+if (success.is_ok()) {
+    println("Result is OK!");
+}
+
+const failure: Result<int, str> = Result<int, str> { ok: null; err: "Error occurred" };
+if (failure.is_err()) {
+    println("Result has error!");
+}

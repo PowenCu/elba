@@ -1,0 +1,87 @@
+// Comprehensive function tests
+
+println("=== Function Tests ===");
+println("");
+
+// Test 1: Basic function
+fn add_two_numbers(a: int, b: int) -> int {
+    a + b
+}
+
+const sum1: int = add_two_numbers(5, 7);
+println(str_concat("Test 1 - add(5,7): ", if (sum1 == 12) { "PASS" } else { "FAIL" }));
+
+// Test 2: Function with multiple parameters
+fn calculate(a: int, b: int, c: int) -> int {
+    a * b + c
+}
+
+const result1: int = calculate(3, 4, 5);
+println(str_concat("Test 2 - calculate(3,4,5): ", if (result1 == 17) { "PASS" } else { "FAIL" }));
+
+// Test 3: Nested function calls
+fn double(x: int) -> int {
+    x * 2
+}
+
+fn triple(x: int) -> int {
+    x * 3
+}
+
+const nested: int = double(triple(5));
+println(str_concat("Test 3 - double(triple(5)): ", if (nested == 30) { "PASS" } else { "FAIL" }));
+
+// Test 4: Function with conditionals
+fn absolute(x: int) -> int {
+    if (x < 0) { -x } else { x }
+}
+
+const abs1: int = absolute(-10);
+const abs2: int = absolute(10);
+println(str_concat("Test 4a - absolute(-10): ", if (abs1 == 10) { "PASS" } else { "FAIL" }));
+println(str_concat("Test 4b - absolute(10): ", if (abs2 == 10) { "PASS" } else { "FAIL" }));
+
+// Test 5: Recursive function
+fn sum_to(n: int) -> int {
+    if (n <= 0) { return 0; }
+    return n + sum_to(n - 1);
+}
+
+const sum_result: int = sum_to(10);
+println(str_concat("Test 5 - sum_to(10): ", if (sum_result == 55) { "PASS" } else { "FAIL" }));
+
+// Test 6: Function returning boolean result
+fn is_even(n: int) -> bool {
+    (n % 2) == 0
+}
+
+const even1: bool = is_even(4);
+const even2: bool = is_even(7);
+println(str_concat("Test 6a - is_even(4): ", if (even1 == true) { "PASS" } else { "FAIL" }));
+println(str_concat("Test 6b - is_even(7): ", if (even2 == false) { "PASS" } else { "FAIL" }));
+
+// Test 7: Function with complex logic
+fn max_of_three(a: int, b: int, c: int) -> int {
+    const max_ab: int = if (a > b) { a } else { b };
+    if (max_ab > c) { max_ab } else { c }
+}
+
+const max_result: int = max_of_three(5, 12, 8);
+println(str_concat("Test 7 - max_of_three(5,12,8): ", if (max_result == 12) { "PASS" } else { "FAIL" }));
+
+// Test 8: Multiple returns
+fn sign(x: int) -> int {
+    if (x > 0) { return 1; }
+    if (x < 0) { return -1; }
+    return 0;
+}
+
+const sign1: int = sign(5);
+const sign2: int = sign(-5);
+const sign3: int = sign(0);
+println(str_concat("Test 8a - sign(5): ", if (sign1 == 1) { "PASS" } else { "FAIL" }));
+println(str_concat("Test 8b - sign(-5): ", if (sign2 == -1) { "PASS" } else { "FAIL" }));
+println(str_concat("Test 8c - sign(0): ", if (sign3 == 0) { "PASS" } else { "FAIL" }));
+
+println("");
+println("=== All Function Tests Complete ===");

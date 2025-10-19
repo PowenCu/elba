@@ -1,0 +1,11 @@
+fn mul(a: int, b: int) -> int {
+    return a * b;
+}
+
+fn div(a: int, b: int) -> int {
+    if (b == 0) {
+        // Handle division by zero
+        return 0; // or some error value
+    }
+    return a / b;
+}

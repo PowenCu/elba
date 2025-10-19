@@ -1,0 +1,12 @@
+// Test module A
+// Exports types and functions for testing
+
+struct ModuleAStruct {
+    value: int;
+}
+
+fn module_a_fn() -> int {
+    42
+}
+
+const MODULE_A_CONST: int = 100;

@@ -1,0 +1,99 @@
+// Test Standard Library
+
+take "std/math.elba";
+take "std/string.elba";
+
+// Test builtin functions
+println("=== Testing Builtin Functions ===");
+
+// Test print/println
+print("Hello, ");
+println("World!");
+
+// Test string functions
+const msg: str = "Elba";
+const len: int = str_len(msg);
+println(msg);
+println(int_to_str(len));
+
+const greeting: str = str_concat("Hello, ", msg);
+println(greeting);
+
+const sub: str = str_substring(greeting, 0, 5);
+println(sub);
+
+// Test math builtins
+const neg: int = -42;
+const abs_val: int = abs(neg);
+println(int_to_str(abs_val));
+
+const min_val: int = min(10, 20);
+const max_val: int = max(10, 20);
+println(int_to_str(min_val));
+println(int_to_str(max_val));
+
+const sqrt_val: float = sqrt(16.0);
+println(float_to_str(sqrt_val));
+
+const floor_val: float = floor(3.7);
+const ceil_val: float = ceil(3.2);
+println(float_to_str(floor_val));
+println(float_to_str(ceil_val));
+
+// Test math library
+println("\n=== Testing Math Library ===");
+
+println(float_to_str(PI));
+println(float_to_str(E));
+
+const power: float = pow(2.0, 3);
+println(float_to_str(power));
+
+const clamped: float = clamp(15.0, 0.0, 10.0);
+println(float_to_str(clamped));
+
+const lerped: float = lerp(0.0, 10.0, 0.5);
+println(float_to_str(lerped));
+
+const sign_pos: int = sign(5.0);
+const sign_neg: int = sign(-5.0);
+const sign_zero: int = sign(0.0);
+println(int_to_str(sign_pos));
+println(int_to_str(sign_neg));
+println(int_to_str(sign_zero));
+
+const rounded: float = round(3.7);
+println(float_to_str(rounded));
+
+// Test string library
+println("\n=== Testing String Library ===");
+
+const empty: str = "";
+const empty_check: bool = is_empty(empty);
+const not_empty_check: bool = is_empty("test");
+println(empty_check);
+println(not_empty_check);
+
+const test_str: str = "hello world";
+const starts: bool = starts_with(test_str, "hello");
+const not_starts: bool = starts_with(test_str, "world");
+println(starts);
+println(not_starts);
+
+const ends: bool = ends_with(test_str, "world");
+const not_ends: bool = ends_with(test_str, "hello");
+println(ends);
+println(not_ends);
+
+const repeated: str = repeat("Ha", 3);
+println(repeated);
+
+const joined: str = join_two("apple", "banana", ", ");
+println(joined);
+
+const padded_left: str = pad_left("42", 5);
+const padded_right: str = pad_right("42", 5);
+println(padded_left);
+println(padded_right);
+
+println("\n=== All tests completed! ===");

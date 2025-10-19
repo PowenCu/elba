@@ -1,0 +1,92 @@
+// Control Flow Examples
+
+println("=== Control Flow Examples ===");
+println("");
+
+// If expressions
+println("1. If expressions:");
+const x: int = 10;
+const y: int = 20;
+
+const max_value: int = if (x > y) { x } else { y };
+println(str_concat("max(10, 20) = ", int_to_str(max_value)));
+
+const min_value: int = if (x < y) { x } else { y };
+println(str_concat("min(10, 20) = ", int_to_str(min_value)));
+println("");
+
+// Nested if
+println("2. Nested if:");
+const score: int = 85;
+const grade: str = if (score >= 90) {
+    "A"
+} else {
+    if (score >= 80) {
+        "B"
+    } else {
+        if (score >= 70) {
+            "C"
+        } else {
+            "F"
+        }
+    }
+};
+println(str_concat("Score ", str_concat(int_to_str(score), str_concat(" = Grade ", grade))));
+println("");
+
+// While loops
+println("3. While loops:");
+println("Counting from 1 to 5:");
+let i: int = 1;
+while (i <= 5) {
+    println(str_concat("  ", int_to_str(i)));
+    i = i + 1;
+}
+println("");
+
+// Nested loops
+println("4. Nested loops:");
+println("Multiplication table (1-3):");
+let row: int = 1;
+while (row <= 3) {
+    let col: int = 1;
+    while (col <= 3) {
+        const product: int = row * col;
+        println(str_concat(str_concat(int_to_str(row), str_concat(" x ", int_to_str(col))), str_concat(" = ", int_to_str(product))));
+        col = col + 1;
+    }
+    row = row + 1;
+}
+println("");
+
+// Loop with accumulator
+println("5. Factorial with loop:");
+fn factorial_loop(n: int) -> int {
+    let result: int = 1;
+    let counter: int = 2;
+    while (counter <= n) {
+        result = result * counter;
+        counter = counter + 1;
+    }
+    return result;
+}
+
+println(str_concat("5! = ", int_to_str(factorial_loop(5))));
+println(str_concat("7! = ", int_to_str(factorial_loop(7))));
+println("");
+
+// Break condition
+println("6. Loop with condition:");
+let search: int = 0;
+let found: int = 0;
+while (search < 100) {
+    if (search * search == 64) {
+        found = search;
+        search = 100;
+    }
+    search = search + 1;
+}
+println(str_concat("Square root of 64 is approximately: ", int_to_str(found)));
+println("");
+
+println("=== Control Flow Complete ===");

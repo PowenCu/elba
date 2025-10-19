@@ -1,0 +1,99 @@
+// Recursion Examples
+
+println("=== Recursion Examples ===");
+println("");
+
+// Factorial
+println("1. Factorial (recursive):");
+fn factorial(n: int) -> int {
+    if (n <= 1) {
+        return 1;
+    }
+    return n * factorial(n - 1);
+}
+
+println(str_concat("0! = ", int_to_str(factorial(0))));
+println(str_concat("5! = ", int_to_str(factorial(5))));
+println(str_concat("7! = ", int_to_str(factorial(7))));
+println(str_concat("10! = ", int_to_str(factorial(10))));
+println("");
+
+// Fibonacci
+println("2. Fibonacci (recursive):");
+fn fibonacci(n: int) -> int {
+    if (n <= 1) {
+        return n;
+    }
+    return fibonacci(n - 1) + fibonacci(n - 2);
+}
+
+let i: int = 0;
+while (i <= 10) {
+    println(str_concat(str_concat("fib(", int_to_str(i)), str_concat(") = ", int_to_str(fibonacci(i)))));
+    i = i + 1;
+}
+println("");
+
+// Sum of array elements (recursive approach)
+println("3. Sum of numbers 1..n (recursive):");
+fn sum_to_n(n: int) -> int {
+    if (n <= 0) {
+        return 0;
+    }
+    return n + sum_to_n(n - 1);
+}
+
+println(str_concat("sum(1..5) = ", int_to_str(sum_to_n(5))));
+println(str_concat("sum(1..10) = ", int_to_str(sum_to_n(10))));
+println(str_concat("sum(1..100) = ", int_to_str(sum_to_n(100))));
+println("");
+
+// Power (recursive)
+println("4. Power (recursive):");
+fn power_rec(base: int, exp: int) -> int {
+    if (exp == 0) {
+        return 1;
+    }
+    if (exp == 1) {
+        return base;
+    }
+    return base * power_rec(base, exp - 1);
+}
+
+println(str_concat("2^5 = ", int_to_str(power_rec(2, 5))));
+println(str_concat("3^4 = ", int_to_str(power_rec(3, 4))));
+println(str_concat("5^3 = ", int_to_str(power_rec(5, 3))));
+println("");
+
+// Countdown
+println("5. Countdown (recursive):");
+fn countdown(n: int) {
+    if (n <= 0) {
+        println("Liftoff!");
+        return 0;
+    }
+    println(int_to_str(n));
+    countdown(n - 1);
+}
+
+countdown(5);
+println("");
+
+// Ackermann function (very recursive!)
+println("6. Ackermann function:");
+fn ackermann(m: int, n: int) -> int {
+    if (m == 0) {
+        return n + 1;
+    }
+    if (n == 0) {
+        return ackermann(m - 1, 1);
+    }
+    return ackermann(m - 1, ackermann(m, n - 1));
+}
+
+println(str_concat("A(1, 2) = ", int_to_str(ackermann(1, 2))));
+println(str_concat("A(2, 2) = ", int_to_str(ackermann(2, 2))));
+println(str_concat("A(3, 2) = ", int_to_str(ackermann(3, 2))));
+println("");
+
+println("=== Recursion Complete ===");

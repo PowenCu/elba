@@ -1,0 +1,37 @@
+// Array Examples
+
+println("=== Array Examples ===");
+println("");
+
+// Creating arrays
+const numbers: []int = [1, 2, 3, 4, 5];
+const names: []str = ["Alice", "Bob", "Charlie"];
+
+println("1. Array Access:");
+println(str_concat("First number: ", int_to_str(numbers[0])));
+println(str_concat("Last number: ", int_to_str(numbers[4])));
+println(str_concat("First name: ", names[0]));
+println("");
+
+// Array iteration with while loop
+println("2. Iterating through array:");
+let i: int = 0;
+while (i < 5) {
+    println(str_concat("  numbers[", str_concat(int_to_str(i), str_concat("] = ", int_to_str(numbers[i])))));
+    i = i + 1;
+}
+println("");
+
+// Array operations
+println("3. Array calculations:");
+let sum: int = 0;
+let j: int = 0;
+while (j < 5) {
+    sum = sum + numbers[j];
+    j = j + 1;
+}
+println(str_concat("Sum of array: ", int_to_str(sum)));
+println(str_concat("Average: ", int_to_str(sum / 5)));
+println("");
+
+println("=== Arrays Complete ===");

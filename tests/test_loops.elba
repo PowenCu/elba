@@ -1,0 +1,113 @@
+// Comprehensive loop and control flow tests
+
+println("=== Loop and Control Flow Tests ===");
+println("");
+
+// Test 1: Simple while loop
+let counter: int = 0;
+while (counter < 5) {
+    counter = counter + 1;
+}
+println(str_concat("Test 1 - while loop count: ", if (counter == 5) { "PASS" } else { "FAIL" }));
+
+// Test 2: While loop with accumulator
+let sum: int = 0;
+let i: int = 1;
+while (i <= 10) {
+    sum = sum + i;
+    i = i + 1;
+}
+println(str_concat("Test 2 - sum 1 to 10: ", if (sum == 55) { "PASS" } else { "FAIL" }));
+
+// Test 3: Nested loops
+let outer_sum: int = 0;
+let row: int = 1;
+while (row <= 3) {
+    let col: int = 1;
+    while (col <= 3) {
+        outer_sum = outer_sum + (row * col);
+        col = col + 1;
+    }
+    row = row + 1;
+}
+println(str_concat("Test 3 - nested loops sum: ", if (outer_sum == 36) { "PASS" } else { "FAIL" }));
+
+// Test 4: If expression
+const val1: int = 10;
+const val2: int = 20;
+const max_val: int = if (val1 > val2) { val1 } else { val2 };
+println(str_concat("Test 4 - if expression max: ", if (max_val == 20) { "PASS" } else { "FAIL" }));
+
+// Test 5: Complex conditional
+const score: int = 85;
+const grade: int = if (score >= 90) {
+    4
+} else {
+    if (score >= 80) {
+        3
+    } else {
+        if (score >= 70) {
+            2
+        } else {
+            1
+        }
+    }
+};
+println(str_concat("Test 5 - nested if: ", if (grade == 3) { "PASS" } else { "FAIL" }));
+
+// Test 6: Loop with early exit condition
+let search: int = 0;
+let found: int = 0;
+while (search < 100) {
+    if (search * search == 49) {
+        found = search;
+        search = 100;
+    }
+    search = search + 1;
+}
+println(str_concat("Test 6 - loop with exit: ", if (found == 7) { "PASS" } else { "FAIL" }));
+
+// Test 7: While loop with boolean condition
+let n: int = 1;
+let reached: bool = false;
+while (n < 1000) {
+    n = n * 2;
+    if (n >= 512) {
+        reached = true;
+    }
+}
+println(str_concat("Test 7 - bool in loop: ", if (reached == true) { "PASS" } else { "FAIL" }));
+
+// Test 8: Multiple conditions
+const a: int = 5;
+const b: int = 10;
+const c: int = 15;
+const all_positive: bool = (a > 0) && (b > 0) && (c > 0);
+const any_large: bool = (a > 20) || (b > 5) || (c > 20);
+println(str_concat("Test 8a - all positive: ", if (all_positive == true) { "PASS" } else { "FAIL" }));
+println(str_concat("Test 8b - any large: ", if (any_large == true) { "PASS" } else { "FAIL" }));
+
+// Test 9: Loop variable scope
+let outer: int = 0;
+while (outer < 3) {
+    let inner: int = 10;
+    inner = inner + outer;
+    outer = outer + 1;
+}
+println(str_concat("Test 9 - loop scope: ", if (outer == 3) { "PASS" } else { "FAIL" }));
+
+// Test 10: Complex loop logic
+let total: int = 0;
+let x: int = 1;
+while (x <= 5) {
+    let y: int = 1;
+    while (y <= x) {
+        total = total + 1;
+        y = y + 1;
+    }
+    x = x + 1;
+}
+println(str_concat("Test 10 - triangular sum: ", if (total == 15) { "PASS" } else { "FAIL" }));
+
+println("");
+println("=== All Loop Tests Complete ===");

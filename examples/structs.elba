@@ -1,0 +1,71 @@
+// Struct Examples
+
+println("=== Struct Examples ===");
+println("");
+
+// Simple struct
+struct Point {
+    x: int;
+    y: int;
+}
+
+println("1. Creating structs:");
+const p1: Point = Point { x: 10; y: 20 };
+const p2: Point = Point { x: 30; y: 40 };
+
+println(str_concat("p1: (", str_concat(int_to_str(p1.x), str_concat(", ", str_concat(int_to_str(p1.y), ")")))));
+println(str_concat("p2: (", str_concat(int_to_str(p2.x), str_concat(", ", str_concat(int_to_str(p2.y), ")")))));
+println("");
+
+// Struct with more fields
+struct Person {
+    age: int;
+    score: int;
+}
+
+println("2. Person struct:");
+const alice: Person = Person { age: 25; score: 95 };
+const bob: Person = Person { age: 30; score: 87 };
+
+println(str_concat("Alice - Age: ", str_concat(int_to_str(alice.age), str_concat(", Score: ", int_to_str(alice.score)))));
+println(str_concat("Bob - Age: ", str_concat(int_to_str(bob.age), str_concat(", Score: ", int_to_str(bob.score)))));
+println("");
+
+// Functions with structs
+fn distance_from_origin(p: Point) -> int {
+    // Simple manhattan distance (using manual abs)
+    const abs_x: int = if (p.x < 0) { -p.x } else { p.x };
+    const abs_y: int = if (p.y < 0) { -p.y } else { p.y };
+    abs_x + abs_y
+}
+
+println("3. Functions with structs:");
+const dist1: int = distance_from_origin(p1);
+const dist2: int = distance_from_origin(p2);
+println(str_concat("Distance of p1 from origin: ", int_to_str(dist1)));
+println(str_concat("Distance of p2 from origin: ", int_to_str(dist2)));
+println("");
+
+// Nested data
+struct Rectangle {
+    width: int;
+    height: int;
+}
+
+fn area(r: Rectangle) -> int {
+    r.width * r.height
+}
+
+fn perimeter(r: Rectangle) -> int {
+    2 * (r.width + r.height)
+}
+
+println("4. Rectangle calculations:");
+const rect: Rectangle = Rectangle { width: 10; height: 5 };
+println(str_concat("Width: ", int_to_str(rect.width)));
+println(str_concat("Height: ", int_to_str(rect.height)));
+println(str_concat("Area: ", int_to_str(area(rect))));
+println(str_concat("Perimeter: ", int_to_str(perimeter(rect))));
+println("");
+
+println("=== Structs Complete ===");

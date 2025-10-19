@@ -1,0 +1,592 @@
+// ===================================================================
+// COMPREHENSIVE TEST FOR ELBA LANGUAGE
+// Testing all currently implemented features
+// ===================================================================
+
+// -------------------------------------------------------------------
+// 1. BASIC TYPES AND LITERALS
+// -------------------------------------------------------------------
+
+// Integer literals
+const int_val: int = 42;
+const negative: int = -10;
+
+// Float literals
+const float_val: float = 3.14;
+const negative_float: float = -2.5;
+
+// String literals
+const string_val: str = "Hello, Elba!";
+const empty_string: str = "";
+
+// Boolean literals
+const bool_true: bool = true;
+const bool_false: bool = false;
+
+// // -------------------------------------------------------------------
+// // 2. ARITHMETIC OPERATIONS
+// // -------------------------------------------------------------------
+
+const add_result: int = 10 + 5;
+const sub_result: int = 20 - 8;
+const mul_result: int = 6 * 7;
+const div_result: int = 100 / 4;
+const mod_result: int = 17 % 5;
+const pow_result: int = 2 ** 3;
+
+// // Float arithmetic
+const float_add: float = 1.5 + 2.5;
+const float_mul: float = 3.0 * 2.0;
+
+// // Mixed integer and float
+const mixed_result: float = 5 + 2.5;
+
+// // Complex expression
+// const complex: int = (10 + 5) * 2 - 8 / 4;
+
+// // -------------------------------------------------------------------
+// // 3. COMPARISON OPERATORS
+// // -------------------------------------------------------------------
+
+// const less_than: bool = 5 < 10;
+// const less_equal: bool = 10 <= 10;
+// const greater_than: bool = 15 > 10;
+// const greater_equal: bool = 20 >= 20;
+// const equal: bool = 42 == 42;
+// const not_equal: bool = 10 != 20;
+
+// // String comparison
+// const str_equal: bool = "hello" == "hello";
+// const str_not_equal: bool = "foo" != "bar";
+
+// // -------------------------------------------------------------------
+// // 4. LOGICAL OPERATORS
+// // -------------------------------------------------------------------
+
+// const logical_and: bool = true && true;
+// const logical_or: bool = false || true;
+// const logical_not: bool = !false;
+
+// // Complex logical expression
+// const complex_logic: bool = (5 > 3) && (10 < 20) || false;
+
+// // -------------------------------------------------------------------
+// // 5. VARIABLES (MUTABLE)
+// // -------------------------------------------------------------------
+
+// let mutable_int: int = 100;
+// mutable_int = 200;
+
+// let mutable_str: str = "original";
+// mutable_str = "modified";
+
+// let counter: int = 0;
+// counter = counter + 1;
+// counter = counter + 1;
+
+// // -------------------------------------------------------------------
+// // 6. CONTROL FLOW - IF/ELSE
+// // -------------------------------------------------------------------
+
+// const check_value: int = 15;
+// const if_result: int = if (check_value > 10) {
+//     100
+// } else {
+//     50
+// };
+
+// const nested_if: str = if (true) {
+//     if (false) {
+//         "nested true"
+//     } else {
+//         "nested false"
+//     }
+// } else {
+//     "outer false"
+// };
+
+// // -------------------------------------------------------------------
+// // 7. CONTROL FLOW - WHILE LOOPS
+// // -------------------------------------------------------------------
+
+// let loop_counter: int = 0;
+// while (loop_counter < 5) {
+//     loop_counter = loop_counter + 1;
+// };
+
+// let factorial: int = 1;
+// let n: int = 5;
+// while (n > 1) {
+//     factorial = factorial * n;
+//     n = n - 1;
+// };
+
+// // -------------------------------------------------------------------
+// // 8. FUNCTIONS
+// // -------------------------------------------------------------------
+
+// // Simple function
+// fn double(x: int) -> int {
+//     x * 2
+// }
+
+// // Function with multiple parameters
+// fn add(a: int, b: int) -> int {
+//     a + b
+// }
+
+// // Function with return statement
+// fn max(a: int, b: int) -> int {
+//     if (a > b) {
+//         return a;
+//     }
+//     return b;
+// }
+
+// // Function that returns string
+// fn greet(name: str) -> str {
+//     "Hello"
+// }
+
+// // Function with no return (unit type)
+// fn do_nothing() {
+//     const x: int = 42;
+// }
+
+// // Test function calls
+// const doubled: int = double(21);
+// const sum: int = add(10, 20);
+// const maximum: int = max(50, 30);
+// const greeting: str = greet("Alice");
+
+// // -------------------------------------------------------------------
+// // 9. STRUCTS
+// // -------------------------------------------------------------------
+
+// struct Point {
+//     x: int;
+//     y: int;
+// }
+
+// struct Person {
+//     name: str;
+//     age: int;
+// }
+
+// // Struct instantiation
+// const origin: Point = Point { x: 0; y: 0 };
+// const point1: Point = Point { x: 10; y: 20 };
+
+// const alice: Person = Person { name: "Alice"; age: 30 };
+// const bob: Person = Person { name: "Bob"; age: 25 };
+
+// // Field access
+// const point_x: int = point1.x;
+// const point_y: int = point1.y;
+// const person_name: str = alice.name;
+// const person_age: int = alice.age;
+
+// // -------------------------------------------------------------------
+// // 10. STRUCT METHODS
+// // -------------------------------------------------------------------
+
+// struct Rectangle {
+//     width: int;
+//     height: int;
+//     
+//     fn area(self: Rectangle) -> int {
+//         self.width * self.height
+//     };
+//     
+//     fn perimeter(self: Rectangle) -> int {
+//         2 * (self.width + self.height)
+//     };
+//     
+//     fn is_square(self: Rectangle) -> bool {
+//         self.width == self.height
+//     };
+// }
+
+// const rect: Rectangle = Rectangle { width: 10; height: 5 };
+// const rect_area: int = rect.area();
+// const rect_perimeter: int = rect.perimeter();
+// const is_sq: bool = rect.is_square();
+
+// const square: Rectangle = Rectangle { width: 8; height: 8 };
+// const is_square_true: bool = square.is_square();
+
+// // -------------------------------------------------------------------
+// // 11. GENERICS - GENERIC FUNCTIONS
+// // -------------------------------------------------------------------
+
+// fn identity<T>(x: T) -> T {
+//     x
+// }
+
+// fn first<T, U>(x: T, y: U) -> T {
+//     x
+// }
+
+// fn second<T, U>(x: T, y: U) -> U {
+//     y
+// }
+
+// // Test generic functions
+// const gen_int: int = identity<int>(42);
+// const gen_str: str = identity<str>("hello");
+// const gen_float: float = identity<float>(3.14);
+
+// const first_int: int = first<int, str>(100, "text");
+// const second_str: str = second<int, str>(100, "text");
+
+// // -------------------------------------------------------------------
+// // 12. GENERICS - GENERIC STRUCTS
+// // -------------------------------------------------------------------
+
+// struct Box<T> {
+//     value: T;
+// }
+
+// struct Pair<T, U> {
+//     first: T;
+//     second: U;
+// }
+
+// // Generic struct instantiation
+// const int_box: Box<int> = Box<int> { value: 42 };
+// const str_box: Box<str> = Box<str> { value: "boxed" };
+
+// const int_str_pair: Pair<int, str> = Pair<int, str> { first: 1; second: "one" };
+// const float_bool_pair: Pair<float, bool> = Pair<float, bool> { first: 2.5; second: true };
+
+// // Field access on generic structs
+// const box_value: int = int_box.value;
+// const pair_first: int = int_str_pair.first;
+// const pair_second: str = int_str_pair.second;
+
+// // -------------------------------------------------------------------
+// // 13. ARRAYS - BASIC OPERATIONS
+// // -------------------------------------------------------------------
+
+// // Array literals
+// const int_array: []int = [1, 2, 3, 4, 5];
+// const str_array: []str = ["apple", "banana", "cherry"];
+// const float_array: []float = [1.1, 2.2, 3.3];
+// const bool_array: []bool = [true, false, true, false];
+
+// // Array indexing
+// const first_elem: int = int_array[0];
+// const second_elem: int = int_array[1];
+// const last_elem: int = int_array[4];
+
+// const fruit: str = str_array[1];
+// const float_val_arr: float = float_array[2];
+
+// // -------------------------------------------------------------------
+// // 14. ARRAYS - NESTED ARRAYS
+// // -------------------------------------------------------------------
+
+// const matrix: [][]int = [[1, 2, 3], [4, 5, 6], [7, 8, 9]];
+// const row: []int = matrix[0];
+// const element: int = matrix[1][1];
+// const corner: int = matrix[2][2];
+
+// const nested_strings: [][]str = [["a", "b"], ["c", "d"], ["e", "f"]];
+// const nested_str: str = nested_strings[1][0];
+
+// // -------------------------------------------------------------------
+// // 15. ARRAYS - WITH EXPRESSIONS
+// // -------------------------------------------------------------------
+
+// const computed_array: []int = [1 + 1, 2 * 3, 10 - 5];
+// const computed_val: int = computed_array[1];
+
+// let x: int = 5;
+// let y: int = 10;
+// const var_array: []int = [x, y, x + y];
+
+// // -------------------------------------------------------------------
+// // 16. ARRAYS - WITH FUNCTIONS
+// // -------------------------------------------------------------------
+
+// fn get_first(arr: []int) -> int {
+//     arr[0]
+// }
+
+// fn get_element(arr: []int, index: int) -> int {
+//     arr[index]
+// }
+
+// fn make_array() -> []int {
+//     [100, 200, 300]
+// }
+
+// fn sum_two(arr: []int) -> int {
+//     arr[0] + arr[1]
+// }
+
+// const arr_test: []int = [10, 20, 30, 40];
+// const arr_first: int = get_first(arr_test);
+// const arr_elem: int = get_element(arr_test, 2);
+
+// const created_arr: []int = make_array();
+// const created_elem: int = created_arr[1];
+
+// const sum_result: int = sum_two([5, 15]);
+
+// // -------------------------------------------------------------------
+// // 17. ARRAYS - WITH STRUCTS
+// // -------------------------------------------------------------------
+
+// struct Coordinate {
+//     x: int;
+//     y: int;
+// }
+
+// const coords: []Coordinate = [
+//     Coordinate { x: 0; y: 0 },
+//     Coordinate { x: 10; y: 20 },
+//     Coordinate { x: 30; y: 40 }
+// ];
+
+// const coord_first: Coordinate = coords[0];
+// const coord_x: int = coords[1].x;
+// const coord_y: int = coords[2].y;
+
+// // Function returning array of structs
+// fn make_coords() -> []Coordinate {
+//     [Coordinate { x: 1; y: 2 }, Coordinate { x: 3; y: 4 }]
+// }
+
+// const made_coords: []Coordinate = make_coords();
+
+// // -------------------------------------------------------------------
+// // 18. ARRAYS - WITH STRUCT METHODS
+// // -------------------------------------------------------------------
+
+// struct Container {
+//     values: []int;
+//     
+//     fn get_first(self: Container) -> int {
+//         self.values[0]
+//     };
+//     
+//     fn get_at(self: Container, index: int) -> int {
+//         self.values[index]
+//     };
+// }
+
+// const container: Container = Container { values: [1, 2, 3, 4, 5] };
+// const container_first: int = container.get_first();
+// const container_at: int = container.get_at(2);
+
+// // -------------------------------------------------------------------
+// // 19. BLOCKS AND EXPRESSIONS
+// // -------------------------------------------------------------------
+
+// const block_result: int = {
+//     const a: int = 10;
+//     const b: int = 20;
+//     a + b
+// };
+
+// const nested_blocks: int = {
+//     const outer: int = {
+//         const inner: int = 5;
+//         inner * 2
+//     };
+//     outer + 10
+// };
+
+// // -------------------------------------------------------------------
+// // 20. COMPLEX COMBINATIONS
+// // -------------------------------------------------------------------
+
+// // Generic struct with arrays
+// struct GenericContainer<T> {
+//     items: []T;
+// }
+
+// const generic_int_container: GenericContainer<int> = GenericContainer<int> {
+//     items: [1, 2, 3]
+// };
+
+// const generic_item: int = generic_int_container.items[1];
+
+// // Function with generic array parameter
+// fn get_generic_first<T>(arr: []T) -> T {
+//     arr[0]
+// }
+
+// const gen_arr_first: int = get_generic_first<int>([10, 20, 30]);
+
+// // Nested generic structs
+// struct Wrapper<T> {
+//     inner: Box<T>;
+// }
+
+// const wrapped: Wrapper<int> = Wrapper<int> {
+//     inner: Box<int> { value: 999 }
+// };
+
+// const wrapped_value: int = wrapped.inner.value;
+
+// // -------------------------------------------------------------------
+// // 21. COMPLEX LOGIC
+// // -------------------------------------------------------------------
+
+// // Fibonacci-like calculation
+// let fib_a: int = 0;
+// let fib_b: int = 1;
+// let fib_count: int = 0;
+// while (fib_count < 7) {
+//     let temp: int = fib_a;
+//     fib_a = fib_b;
+//     fib_b = temp + fib_b;
+//     fib_count = fib_count + 1;
+// };
+
+// // Function with complex logic
+// fn classify(n: int) -> str {
+//     if (n < 0) {
+//         return "negative";
+//     }
+//     if (n == 0) {
+//         return "zero";
+//     }
+//     if (n < 10) {
+//         return "small";
+//     }
+//     if (n < 100) {
+//         return "medium";
+//     }
+//     "large"
+// }
+
+// const class1: str = classify(-5);
+// const class2: str = classify(0);
+// const class3: str = classify(5);
+// const class4: str = classify(50);
+// const class5: str = classify(150);
+
+// ===================================================================
+// END OF COMPREHENSIVE TEST
+// ===================================================================
+
+// Proposals
+
+// Optionals ("?" syntax) & Null keyword- IMPLEMENTED
+// let maybe_num: int? = null;
+// maybe_num = 10;
+// maybe_num = null;
+// let some_val: int? = 42;
+// some_val = null;
+// 
+// fn get_value(opt: int?) -> int {
+//     if (opt != null) {
+//         return opt;
+//     }
+//     return 0;
+// }
+// 
+// const extracted: int = get_value(some_val);
+// 
+// struct Maybe<T> {
+//     value: T?;
+// }
+// 
+// const maybe_int: Maybe<int> = Maybe<int> { value: 100 };
+// const maybe_none: Maybe<int> = Maybe<int> { value: null };
+// const maybe_extracted: int = get_value(maybe_int.value);
+// const maybe_none_extracted: int = get_value(maybe_none.value);
+
+// Multiple type parameters & type checking keywords ("is" and "is not") - IMPLEMENTED
+// let maybe: int | str = 42;
+// maybe = "now a string";
+// maybe = 100;
+// 
+// struct Container {
+//     content: int | str;
+// }
+// const int_container: Container = Container { content: 123 };
+// const str_container: Container = Container { content: "abc" };
+// 
+// fn intOrStr(x: int | str) -> str {
+//     if (x is int) {
+//         return "It's an integer";
+//     }
+//     "It's a string"
+// }
+// 
+// const check1: str = intOrStr(maybe);
+// const check2: str = intOrStr(int_container.content);
+// const check3: str = intOrStr(str_container.content);
+// 
+// fn isInt(x: int | str) -> bool {
+//     return x is int;
+// }
+// 
+// const check_int1: bool = isInt(maybe);
+// const check_int2: bool = isInt(int_container.content);
+// const check_int3: bool = isInt(str_container.content);
+// 
+// fn isNotInt(x: int | str) -> bool {
+//     return x is not int;
+// }
+// const check_not_int1: bool = isNotInt(maybe);
+// const check_not_int2: bool = isNotInt(int_container.content);
+// const check_not_int3: bool = isNotInt(str_container.content);
+
+// Type Aliases - IMPLEMENTED
+// type Age = int;
+// type Name = str;
+// type IntOrStr = int | str;
+// 
+// const my_age: Age = 25;
+// const my_name: Name = "Elba";
+// let id_value: IntOrStr = 12345;
+// id_value = "ID123";
+// 
+// struct User {
+//     name: Name;
+//     age: Age;
+//     id: IntOrStr;
+// }
+// 
+// const user1: User = User { name: "Alice"; age: 30; id: 1001 };
+// const user2: User = User { name: "Bob"; age: 25; id: "USER2023" };
+// 
+// fn describe_user(u: User) -> str {
+//     if (u.id is int) {
+//         return "User with integer ID";
+//     }
+//     "User with string ID"
+// }
+// 
+// fn getAge(age: Age) -> int {
+//     age
+// }
+// 
+// const desc1: str = describe_user(user1);
+// const desc2: str = describe_user(user2);
+// const age_of_user1: int = getAge(user1.age);
+
+// Module Imports - IMPLEMENTED
+// take "module2.elba"; // File has "mul" and "div" functions, so all is imported
+// take "module3.elba"; // File has "PI" constant and "area" function, so all is imported
+// take { add } from "module.elba"; // File has "add" and "sub" functions, but only "add" is imported
+// 
+// // Module usage test
+// const sum_using_module: int = add(10, 20);
+// const sum_with_negative: int = add(-5, 15);
+// const sum_large: int = add(1000, 2000);
+// 
+// // Module2 usage test
+// const product: int = mul(6, 7);
+// const quotient: int = div(100, 4);
+// 
+// // Module3 usage test
+// const circle_area: float = area(5.0);
+// const circle_area_large: float = area(10.0);
+// const circle_area_small: float = area(2.5);
+// const pi_value: float = PI * 2.0;

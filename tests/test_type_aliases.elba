@@ -1,0 +1,151 @@
+// Test Type Aliases
+
+println("=== Testing Type Aliases ===");
+println("");
+
+// Test 1: Basic type aliases
+println("Test 1: Basic type aliases");
+type Int = int;
+type String = str;
+type Float = float;
+
+const x: Int = 42;
+const y: String = "hello";
+const z: Float = 3.14;
+
+println(int_to_str(x));
+println(y);
+println(float_to_str(z));
+
+// Test 2: Array type aliases
+println("");
+println("Test 2: Array type aliases");
+type IntArray = []int;
+type StrArray = []str;
+
+const numbers: IntArray = [1, 2, 3, 4, 5];
+const words: StrArray = ["one", "two", "three"];
+
+println(int_to_str(numbers[0]));
+println(words[1]);
+
+// Test 3: Optional type aliases
+println("");
+println("Test 3: Optional type aliases");
+type MaybeInt = int?;
+type MaybeStr = str?;
+
+let opt_num: MaybeInt = 100;
+let opt_str: MaybeStr = "test";
+
+if (opt_num != null) {
+    println("Has number");
+}
+
+opt_num = null;
+if (opt_num == null) {
+    println("Now null");
+}
+
+// Test 4: Struct type aliases
+println("");
+println("Test 4: Struct type aliases");
+struct Point {
+    x: int;
+    y: int;
+}
+
+type Position = Point;
+
+const pos: Position = Point { x: 10; y: 20 };
+println(int_to_str(pos.x));
+println(int_to_str(pos.y));
+
+// Test 5: Generic type aliases
+println("");
+println("Test 5: Generic type aliases");
+struct Box<T> {
+    value: T;
+}
+
+type IntBox = Box<int>;
+type StrBox = Box<str>;
+
+const ibox: IntBox = Box<int> { value: 99 };
+const sbox: StrBox = Box<str> { value: "boxed" };
+
+println(int_to_str(ibox.value));
+println(sbox.value);
+
+// Test 6: Function parameter type aliases
+println("");
+println("Test 6: Type aliases in functions");
+type Number = int;
+
+fn add(a: Number, b: Number) -> Number {
+    a + b
+}
+
+const sum: Number = add(5, 10);
+println(int_to_str(sum));
+
+// Test 7: Nested type aliases
+println("");
+println("Test 7: Nested type aliases");
+type IntList = []int;
+type IntListArray = []IntList;
+
+// Note: This might not be fully supported yet
+// const nested: IntListArray = [[1, 2], [3, 4]];
+
+// Test 8: Union type aliases
+println("");
+println("Test 8: Union type aliases");
+type IntOrStr = int | str;
+
+let value: IntOrStr = 42;
+if (value is int) {
+    println("Is int");
+}
+
+value = "string";
+if (value is str) {
+    println("Is str");
+}
+
+// Test 9: Complex type aliases
+println("");
+println("Test 9: Complex type aliases");
+struct Pair<A, B> {
+    first: A;
+    second: B;
+}
+
+type IntStrPair = Pair<int, str>;
+type StrFloatPair = Pair<str, float>;
+
+const p1: IntStrPair = Pair<int, str> { first: 1; second: "one" };
+const p2: StrFloatPair = Pair<str, float> { first: "pi"; second: 3.14 };
+
+println(int_to_str(p1.first));
+println(p1.second);
+println(p2.first);
+println(float_to_str(p2.second));
+
+// Test 10: Type aliases with complex generics
+println("");
+println("Test 10: Complex generic aliases");
+type IntBoxOpt = Box<int>?;
+
+let maybe_box: IntBoxOpt = Box<int> { value: 777 };
+if (maybe_box != null) {
+    println("Has box");
+}
+
+maybe_box = null;
+if (maybe_box == null) {
+    println("Box is null");
+}
+
+println("");
+println("=== All Type Alias Tests Complete ===");

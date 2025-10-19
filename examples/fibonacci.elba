@@ -1,0 +1,47 @@
+// Fibonacci Calculator with Multiple Implementations
+
+// Recursive Fibonacci
+fn fib_recursive(n: int) -> int {
+    if (n <= 1) {
+        n
+    } else {
+        fib_recursive(n - 1) + fib_recursive(n - 2)
+    }
+}
+
+// Iterative Fibonacci
+fn fib_iterative(n: int) -> int {
+    if (n <= 1) {
+        return n;
+    }
+    
+    let a: int = 0;
+    let b: int = 1;
+    let i: int = 2;
+    
+    while (i <= n) {
+        const temp: int = a + b;
+        a = b;
+        b = temp;
+        i = i + 1;
+    }
+    
+    b
+}
+
+// Calculate and display Fibonacci numbers
+println("=== Fibonacci Numbers ===");
+println("");
+
+println("First 10 Fibonacci numbers:");
+let i: int = 0;
+while (i < 10) {
+    print(int_to_str(i));
+    print(": ");
+    println(int_to_str(fib_iterative(i)));
+    i = i + 1;
+}
+
+println("");
+println("Using recursive method:");
+println(str_concat("fib(7) = ", int_to_str(fib_recursive(7))));

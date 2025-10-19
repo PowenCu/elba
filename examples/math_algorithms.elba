@@ -1,0 +1,108 @@
+// Math and Algorithms Examples
+
+println("=== Math and Algorithms ===");
+println("");
+
+// Basic math operations
+println("1. Basic arithmetic:");
+const a: int = 15;
+const b: int = 4;
+println(str_concat(int_to_str(a), str_concat(" + ", str_concat(int_to_str(b), str_concat(" = ", int_to_str(a + b))))));
+println(str_concat(int_to_str(a), str_concat(" - ", str_concat(int_to_str(b), str_concat(" = ", int_to_str(a - b))))));
+println(str_concat(int_to_str(a), str_concat(" * ", str_concat(int_to_str(b), str_concat(" = ", int_to_str(a * b))))));
+println(str_concat(int_to_str(a), str_concat(" / ", str_concat(int_to_str(b), str_concat(" = ", int_to_str(a / b))))));
+println("");
+
+// Built-in math functions
+println("2. Math functions:");
+println(str_concat("abs(-42) = ", int_to_str(abs(-42))));
+println(str_concat("abs(42) = ", int_to_str(abs(42))));
+println(str_concat("min(10, 20) = ", int_to_str(min(10, 20))));
+println(str_concat("max(10, 20) = ", int_to_str(max(10, 20))));
+println("");
+
+// Power function
+println("3. Power function:");
+fn power(base: int, exp: int) -> int {
+    if (exp == 0) {
+        return 1;
+    }
+    let result: int = base;
+    let i: int = 1;
+    while (i < exp) {
+        result = result * base;
+        i = i + 1;
+    }
+    return result;
+}
+
+println(str_concat("2^3 = ", int_to_str(power(2, 3))));
+println(str_concat("5^2 = ", int_to_str(power(5, 2))));
+println(str_concat("3^4 = ", int_to_str(power(3, 4))));
+println("");
+
+// GCD (Greatest Common Divisor)
+println("4. GCD algorithm:");
+fn gcd(a: int, b: int) -> int {
+    let x: int = abs(a);
+    let y: int = abs(b);
+    while (y != 0) {
+        const temp: int = y;
+        y = x % y;
+        x = temp;
+    }
+    return x;
+}
+
+println(str_concat("gcd(48, 18) = ", int_to_str(gcd(48, 18))));
+println(str_concat("gcd(100, 75) = ", int_to_str(gcd(100, 75))));
+println("");
+
+// Prime number check
+println("5. Prime number check:");
+fn is_prime(n: int) -> bool {
+    if (n < 2) {
+        return false;
+    }
+    if (n == 2) {
+        return true;
+    }
+    let i: int = 2;
+    while (i * i <= n) {
+        if (n % i == 0) {
+            return false;
+        }
+        i = i + 1;
+    }
+    return true;
+}
+
+fn check_prime(n: int) {
+    const result: str = if (is_prime(n)) { "prime" } else { "not prime" };
+    println(str_concat(int_to_str(n), str_concat(" is ", result)));
+}
+
+check_prime(2);
+check_prime(7);
+check_prime(10);
+check_prime(17);
+check_prime(20);
+println("");
+
+// Sum of digits
+println("6. Sum of digits:");
+fn sum_digits(n: int) -> int {
+    let sum: int = 0;
+    let num: int = abs(n);
+    while (num > 0) {
+        sum = sum + (num % 10);
+        num = num / 10;
+    }
+    return sum;
+}
+
+println(str_concat("Sum of digits of 123: ", int_to_str(sum_digits(123))));
+println(str_concat("Sum of digits of 9876: ", int_to_str(sum_digits(9876))));
+println("");
+
+println("=== Math and Algorithms Complete ===");

@@ -1,0 +1,61 @@
+// Standard Math Library for Elba
+// Provides common mathematical functions and constants
+
+// Mathematical constants
+const PI: float = 3.14159265359;
+const E: float = 2.71828182846;
+
+// Power function (integer exponent)
+fn pow(base: float, exp: int) -> float {
+    if (exp == 0) {
+        return 1.0;
+    }
+    if (exp < 0) {
+        return 1.0 / pow(base, -exp);
+    }
+    
+    let result: float = 1.0;
+    let i: int = 0;
+    while (exp > i) {
+        result = result * base;
+        i = i + 1;
+    }
+    result
+}
+
+// Clamp a value between min and max
+fn clamp(value: float, min_val: float, max_val: float) -> float {
+    if (min_val > value) {
+        return min_val;
+    }
+    if (max_val > value) {
+        return value;
+    }
+    max_val
+}
+
+// Linear interpolation
+fn lerp(a: float, b: float, t: float) -> float {
+    return a + (b - a) * t;
+}
+
+// Sign function (-1, 0, or 1)
+fn sign(x: float) -> int {
+    if (x > 0.0) {
+        return 1;
+    }
+    if (x < 0.0) {
+        return -1;
+    }
+    0
+}
+
+// Round to nearest integer
+fn round(x: float) -> float {
+    const floored: float = floor(x);
+    const diff: float = x - floored;
+    if (diff >= 0.5) {
+        return floored + 1.0;
+    }
+    floored
+}

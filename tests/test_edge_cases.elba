@@ -1,0 +1,207 @@
+// Edge Case Testing for Elba
+
+println("=== Testing Edge Cases ===");
+println("");
+
+// Test 1: Division by zero
+println("Test 1: Division operations");
+const safe_div: int = 10 / 2;
+println(int_to_str(safe_div));
+
+// This should handle division by zero gracefully
+const zero: int = 0;
+// const div_by_zero: int = 10 / zero;  // Should we handle this?
+
+// Test 2: Modulo operations
+println("");
+println("Test 2: Modulo operations");
+const mod_result: int = 10 % 3;
+println(int_to_str(mod_result));
+
+// Test 3: Null handling
+println("");
+println("Test 3: Null handling");
+let nullable: int? = 42;
+if (nullable != null) {
+    println("Has value");
+};
+
+nullable = null;
+if (nullable == null) {
+    println("Is null");
+};
+
+// Test 4: Empty string handling
+println("");
+println("Test 4: Empty strings");
+const empty: str = "";
+const empty_len: int = str_len(empty);
+println(int_to_str(empty_len));
+
+const empty_concat: str = str_concat(empty, "test");
+println(empty_concat);
+
+// Test 5: String substring edge cases
+println("");
+println("Test 5: String operations");
+const test_str: str = "hello";
+const full_substr: str = str_substring(test_str, 0, 5);
+println(full_substr);
+
+const empty_substr: str = str_substring(test_str, 2, 2);
+println(int_to_str(str_len(empty_substr)));
+
+// Test 6: Negative numbers
+println("");
+println("Test 6: Negative numbers");
+const neg1: int = -10;
+const neg2: int = -5;
+const neg_sum: int = neg1 + neg2;
+const neg_mul: int = neg1 * neg2;
+println(int_to_str(neg_sum));
+println(int_to_str(neg_mul));
+
+// Test 7: Float operations
+println("");
+println("Test 7: Float operations");
+const f1: float = 3.14;
+const f2: float = 2.0;
+const f_div: float = f1 / f2;
+println(float_to_str(f_div));
+
+const f_neg: float = -2.5;
+const f_abs: float = abs(f_neg);
+println(float_to_str(f_abs));
+
+// Test 8: Boolean operations
+println("");
+println("Test 8: Boolean logic");
+const t: bool = true;
+const f: bool = false;
+
+if (t && f) {
+    println("Should not print");
+} else {
+    println("Correct: true && false = false");
+}
+
+if (t || f) {
+    println("Correct: true || false = true");
+}
+
+if (!f) {
+    println("Correct: !false = true");
+}
+
+// Test 9: Comparison chains
+println("");
+println("Test 9: Comparisons");
+const a: int = 5;
+const b: int = 10;
+const c: int = 5;
+
+if (a < b) {
+    println("5 < 10: true");
+};
+
+if (a == c) {
+    println("5 == 5: true");
+};
+
+if (a <= c) {
+    println("5 <= 5: true");
+};
+
+if (b > a) {
+    println("10 > 5: true");
+};
+
+if (b >= a) {
+    println("10 >= 5: true");
+};
+
+if (a != b) {
+    println("5 != 10: true");
+};
+
+// Test 10: Type checking with is
+println("");
+println("Test 10: Type checking");
+const num: int = 42;
+if (num is int) {
+    println("42 is int: true");
+}
+
+if (num is not float) {
+    println("42 is not float: true");
+}
+
+// Test 11: Union types
+println("");
+println("Test 11: Union types");
+let mixed: int | str = 123;
+if (mixed is int) {
+    println("Union holds int");
+}
+
+mixed = "hello";
+if (mixed is str) {
+    println("Union holds str");
+}
+
+// Test 12: Array operations
+println("");
+println("Test 12: Arrays");
+const arr: []int = [1, 2, 3, 4, 5];
+const first: int = arr[0];
+const last: int = arr[4];
+println(int_to_str(first));
+println(int_to_str(last));
+
+// Test 13: Struct operations
+println("");
+println("Test 13: Structs");
+struct Point {
+    x: int;
+    y: int;
+}
+
+const p1: Point = Point { x: 10; y: 20 };
+const p2: Point = Point { x: 5; y: 15 };
+
+println(int_to_str(p1.x));
+println(int_to_str(p2.y));
+
+// Test 14: Optional chaining
+println("");
+println("Test 14: Optional values");
+let opt1: int? = 100;
+let opt2: int? = null;
+
+if (opt1 != null) {
+    println("opt1 has value");
+}
+
+if (opt2 == null) {
+    println("opt2 is null");
+}
+
+// Test 15: Function return edge cases
+println("");
+println("Test 15: Functions");
+fn return_early(x: int) -> str {
+    if (x < 0) {
+        return "negative";
+    }
+    if (x == 0) {
+        return "zero";
+    }
+    return "positive";
+}
+
+println(return_early(-5));
+println(return_early(0));
+println(return_early(5));
+
+println("");
+println("=== All Edge Case Tests Complete ===");

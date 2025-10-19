@@ -1,0 +1,7 @@
+// Test while statement
+let i: int = 0;
+while (i < 3) {
+    println(int_to_str(i));
+    i = i + 1;
+}
+println("Done");
