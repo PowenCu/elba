@@ -50,6 +50,9 @@ Elba is a statically-typed programming language designed for clarity, performanc
   - IR Interpreter (5x faster)
   - C Code Generator (50x faster)
   - **LLVM Backend (100x faster)** ⚡
+    - Full control flow support (if-else, while loops)
+    - Native machine code generation
+    - Optimized binary output
   
 - 🛠️ **Developer Tools**
   - Interactive REPL with history

@@ -5,6 +5,22 @@ All notable changes to the Elba programming language will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- ⚡ **LLVM Backend: Full Control Flow Support**
+  - If-else expressions now compile to native code
+  - While loops fully functional in LLVM backend
+  - Nested control structures work correctly
+  - Added temp_slot mechanism for passing values across basic blocks
+  - New example: `llvm_control_flow.elba` demonstrating all features
+
+### Fixed
+- 🐛 **LLVM Backend: Control flow value handling**
+  - Fixed SSA form issues with basic block merging
+  - Proper handling of values across conditional branches
+  - Correct terminator placement in all basic blocks
+
 ## [0.1.0] - 2025-10-19
 
 ### Added

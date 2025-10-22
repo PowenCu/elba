@@ -49,6 +49,9 @@ pub const LLVMCodeGen = struct {
     variables: std.StringHashMap(c.LLVMValueRef),
     variable_types: std.StringHashMap(c.LLVMTypeRef),
     string_literals: std.StringHashMap(c.LLVMValueRef),
+    basic_blocks: std.StringHashMap(c.LLVMBasicBlockRef),
+    // Temporary value slot for passing values across basic blocks
+    temp_slot: ?c.LLVMValueRef,
 
     const Self = @This();
 
@@ -90,6 +93,8 @@ pub const LLVMCodeGen = struct {
             .variables = std.StringHashMap(c.LLVMValueRef).init(allocator),
             .variable_types = std.StringHashMap(c.LLVMTypeRef).init(allocator),
             .string_literals = std.StringHashMap(c.LLVMValueRef).init(allocator),
+            .basic_blocks = std.StringHashMap(c.LLVMBasicBlockRef).init(allocator),
+            .temp_slot = null,
         };
     }
 
@@ -99,6 +104,7 @@ pub const LLVMCodeGen = struct {
         self.variables.deinit();
         self.variable_types.deinit();
         self.string_literals.deinit();
+        self.basic_blocks.deinit();
 
         c.LLVMDisposeBuilder(self.builder);
         c.LLVMDisposeModule(self.module);
@@ -205,18 +211,50 @@ pub const LLVMCodeGen = struct {
         const llvm_func = self.functions.get(func.name) orelse return error.FunctionNotFound;
         self.current_function = llvm_func;
 
+        // Reset function-local state
+        self.stack.clearRetainingCapacity();
+        self.variables.clearRetainingCapacity();
+        self.variable_types.clearRetainingCapacity();
+        self.basic_blocks.clearRetainingCapacity();
+
         // Create entry block
         const entry_block = c.LLVMAppendBasicBlockInContext(
             self.context,
             llvm_func,
             "entry",
         );
-        c.LLVMPositionBuilderAtEnd(self.builder, entry_block);
+        
+        // Pre-scan to find all labels and create basic blocks
+        var label_set = std.AutoHashMap(i64, void).init(self.allocator);
+        defer label_set.deinit();
+        
+        for (func.instructions) |inst| {
+            switch (inst.op) {
+                .jump, .jump_if_false, .jump_if_true => {
+                    try label_set.put(inst.operand1, {});
+                },
+                else => {},
+            }
+        }
+        
+        // Create basic blocks for all labels
+        var label_iter = label_set.keyIterator();
+        while (label_iter.next()) |label_id| {
+            const label_name = try std.fmt.allocPrint(self.allocator, "L{d}", .{label_id.*});
+            defer self.allocator.free(label_name);
+            
+            const label_name_z = try self.allocator.dupeZ(u8, label_name);
+            defer self.allocator.free(label_name_z);
+            
+            const block = c.LLVMAppendBasicBlockInContext(self.context, llvm_func, label_name_z.ptr);
+            try self.basic_blocks.put(label_name, block);
+        }
 
-        // Reset function-local state
-        self.stack.clearRetainingCapacity();
-        self.variables.clearRetainingCapacity();
-        self.variable_types.clearRetainingCapacity();
+        // Position at entry and set up parameters
+        c.LLVMPositionBuilderAtEnd(self.builder, entry_block);
+        
+        // Create a temporary slot for passing values across basic blocks
+        self.temp_slot = c.LLVMBuildAlloca(self.builder, self.i64_type, "temp");
 
         // Allocate space for parameters (use actual parameter names from IR)
         for (0..func.param_count) |i| {
@@ -240,13 +278,63 @@ pub const LLVMCodeGen = struct {
             try self.variable_types.put(param_name, self.i64_type);
         }
 
-        // Generate instructions
-        for (func.instructions) |inst| {
+        // Generate instructions with label handling
+        var current_label: ?i64 = null;
+        for (func.instructions, 0..) |inst, idx| {
+            // Check if NEXT instruction is a label target
+            const next_idx = idx + 1;
+            const next_is_label = if (next_idx < func.instructions.len) 
+                label_set.contains(@intCast(next_idx))
+            else 
+                false;
+            
+            // Check if THIS instruction is a label target
+            if (label_set.contains(@intCast(idx))) {
+                // We're at a label - need to position builder
+                const label_name = try std.fmt.allocPrint(self.allocator, "L{d}", .{idx});
+                defer self.allocator.free(label_name);
+                
+                if (self.basic_blocks.get(label_name)) |label_block| {
+                    // Check if current block needs terminator before jumping to label
+                    const current_block = c.LLVMGetInsertBlock(self.builder);
+                    if (c.LLVMGetBasicBlockTerminator(current_block) == null) {
+                        // Save stack value if any before branching
+                        if (self.stack.items.len > 0 and self.temp_slot != null) {
+                            const value = self.stack.items[self.stack.items.len - 1];
+                            _ = c.LLVMBuildStore(self.builder, value, self.temp_slot.?);
+                        }
+                        // Add unconditional branch to the label
+                        _ = c.LLVMBuildBr(self.builder, label_block);
+                    }
+                    
+                    // Position builder at the label block
+                    c.LLVMPositionBuilderAtEnd(self.builder, label_block);
+                    current_label = @intCast(idx);
+                    
+                    // Load value from temp_slot if coming from a jump
+                    if (self.temp_slot) |slot| {
+                        const loaded = c.LLVMBuildLoad2(self.builder, self.i64_type, slot, "temp_load");
+                        // Push the loaded value onto stack
+                        try self.stack.append(self.allocator, loaded);
+                    }
+                }
+            }
+            
             try self.generateInstruction(inst);
+            
+            // If next instruction is a label and current block has no terminator, save stack value
+            if (next_is_label and self.temp_slot != null) {
+                const current_block = c.LLVMGetInsertBlock(self.builder);
+                if (c.LLVMGetBasicBlockTerminator(current_block) == null and self.stack.items.len > 0) {
+                    const value = self.stack.items[self.stack.items.len - 1];
+                    _ = c.LLVMBuildStore(self.builder, value, self.temp_slot.?);
+                }
+            }
         }
 
         // Add default return if missing
-        if (c.LLVMGetBasicBlockTerminator(c.LLVMGetInsertBlock(self.builder)) == null) {
+        const final_block = c.LLVMGetInsertBlock(self.builder);
+        if (c.LLVMGetBasicBlockTerminator(final_block) == null) {
             const zero = c.LLVMConstInt(self.i64_type, 0, 0);
             _ = c.LLVMBuildRet(self.builder, zero);
         }
@@ -332,13 +420,18 @@ pub const LLVMCodeGen = struct {
                 try self.stack.append(self.allocator, result);
             },
             .jump => {
+                // Save stack top to temp_slot before jumping (if there's a value on stack)
+                if (self.stack.items.len > 0 and self.temp_slot != null) {
+                    const value = self.stack.items[self.stack.items.len - 1];
+                    _ = c.LLVMBuildStore(self.builder, value, self.temp_slot.?);
+                }
+                
                 const target_label = try std.fmt.allocPrint(self.allocator, "L{d}", .{inst.operand1});
                 defer self.allocator.free(target_label);
-                const target_label_z = try self.allocator.dupeZ(u8, target_label);
-                defer self.allocator.free(target_label_z);
 
-                const target_block = self.getOrCreateBasicBlock(target_label_z);
-                _ = c.LLVMBuildBr(self.builder, target_block);
+                if (self.basic_blocks.get(target_label)) |target_block| {
+                    _ = c.LLVMBuildBr(self.builder, target_block);
+                }
             },
             .jump_if_false => {
                 const condition = self.stack.pop() orelse unreachable;
@@ -347,19 +440,18 @@ pub const LLVMCodeGen = struct {
 
                 const true_label = try std.fmt.allocPrint(self.allocator, "L{d}", .{inst.operand1});
                 defer self.allocator.free(true_label);
-                const true_label_z = try self.allocator.dupeZ(u8, true_label);
-                defer self.allocator.free(true_label_z);
 
-                const next_label = try std.fmt.allocPrint(self.allocator, "next{d}", .{inst.operand1});
-                defer self.allocator.free(next_label);
-                const next_label_z = try self.allocator.dupeZ(u8, next_label);
-                defer self.allocator.free(next_label_z);
+                // Create a "continue" block for fall-through
+                const continue_label = try std.fmt.allocPrint(self.allocator, "continue{d}", .{inst.operand1});
+                defer self.allocator.free(continue_label);
+                const continue_label_z = try self.allocator.dupeZ(u8, continue_label);
+                defer self.allocator.free(continue_label_z);
 
-                const true_block = self.getOrCreateBasicBlock(true_label_z);
-                const next_block = self.getOrCreateBasicBlock(next_label_z);
+                const true_block = self.basic_blocks.get(true_label) orelse unreachable;
+                const continue_block = c.LLVMAppendBasicBlockInContext(self.context, self.current_function.?, continue_label_z.ptr);
 
-                _ = c.LLVMBuildCondBr(self.builder, cmp, true_block, next_block);
-                c.LLVMPositionBuilderAtEnd(self.builder, next_block);
+                _ = c.LLVMBuildCondBr(self.builder, cmp, true_block, continue_block);
+                c.LLVMPositionBuilderAtEnd(self.builder, continue_block);
             },
             .call => {
                 if (inst.string_data) |func_name| {
