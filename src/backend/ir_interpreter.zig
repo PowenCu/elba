@@ -12,6 +12,7 @@ pub const Value = union(enum) {
     string: []const u8,
     null_value,
     array: []Value,
+    struct_val: []i64,  // Struct as array of i64 values
 
     pub fn format(self: Value, comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
         switch (self) {
@@ -27,6 +28,9 @@ pub const Value = union(enum) {
                     try item.format("", .{}, writer);
                 }
                 try writer.print("]", .{});
+            },
+            .struct_val => |fields| {
+                try writer.print("struct{{{d} fields}}", .{fields.len});
             },
         }
     }
@@ -256,6 +260,7 @@ pub const Interpreter = struct {
                                 .string => |v| std.debug.print("{s}\n", .{v}),
                                 .null_value => std.debug.print("null\n", .{}),
                                 .array => std.debug.print("[array]\n", .{}),
+                                .struct_val => |fields| std.debug.print("[struct with {d} fields]\n", .{fields.len}),
                             }
                         } else if (std.mem.eql(u8, func_name, "print")) {
                             const arg = self.stack.pop() orelse return error.StackUnderflow;
@@ -266,6 +271,7 @@ pub const Interpreter = struct {
                                 .string => |v| std.debug.print("{s}", .{v}),
                                 .null_value => std.debug.print("null", .{}),
                                 .array => std.debug.print("[array]", .{}),
+                                .struct_val => |fields| std.debug.print("[struct with {d} fields]", .{fields.len}),
                             }
                         } else {
                             // User-defined function call
@@ -293,6 +299,66 @@ pub const Interpreter = struct {
                 .halt => {
                     if (self.verbose) std.debug.print("\n", .{});
                     return; // Stop execution
+                },
+                .struct_new => {
+                    const field_count: usize = @intCast(inst.operand1);
+                    const fields = try self.allocator.alloc(i64, field_count);
+                    // Initialize to zero
+                    for (fields) |*field| {
+                        field.* = 0;
+                    }
+                    try self.stack.append(self.allocator, .{ .struct_val = fields });
+                    if (self.verbose) std.debug.print(" -> struct{{{d}}}\n", .{field_count});
+                },
+                .field_get => {
+                    const struct_val = self.stack.pop() orelse return error.StackUnderflow;
+                    const field_idx: usize = @intCast(inst.operand1);
+                    
+                    switch (struct_val) {
+                        .struct_val => |fields| {
+                            if (field_idx >= fields.len) {
+                                std.debug.print("\nError: Field index {d} out of bounds (struct has {d} fields)\n", .{ field_idx, fields.len });
+                                return error.FieldOutOfBounds;
+                            }
+                            const value = fields[field_idx];
+                            try self.stack.append(self.allocator, .{ .int = value });
+                            if (self.verbose) std.debug.print(" -> field[{d}]={d}\n", .{ field_idx, value });
+                        },
+                        else => {
+                            std.debug.print("\nError: field_get on non-struct value\n", .{});
+                            return error.TypeError;
+                        },
+                    }
+                },
+                .field_set => {
+                    const value = self.stack.pop() orelse return error.StackUnderflow;
+                    const struct_val = self.stack.pop() orelse return error.StackUnderflow;
+                    const field_idx: usize = @intCast(inst.operand1);
+                    
+                    switch (struct_val) {
+                        .struct_val => |fields| {
+                            if (field_idx >= fields.len) {
+                                std.debug.print("\nError: Field index {d} out of bounds (struct has {d} fields)\n", .{ field_idx, fields.len });
+                                return error.FieldOutOfBounds;
+                            }
+                            switch (value) {
+                                .int => |v| {
+                                    fields[field_idx] = v;
+                                    if (self.verbose) std.debug.print(" -> field[{d}]={d}\n", .{ field_idx, v });
+                                },
+                                else => {
+                                    std.debug.print("\nError: Can only store int values in struct fields\n", .{});
+                                    return error.TypeError;
+                                },
+                            }
+                            // Push struct back for chaining
+                            try self.stack.append(self.allocator, struct_val);
+                        },
+                        else => {
+                            std.debug.print("\nError: field_set on non-struct value\n", .{});
+                            return error.TypeError;
+                        },
+                    }
                 },
                 else => {
                     std.debug.print("\nError: Opcode {s} not implemented\n", .{@tagName(inst.op)});
