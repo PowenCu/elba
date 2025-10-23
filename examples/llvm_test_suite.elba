@@ -1,0 +1,154 @@
+// Comprehensive LLVM Backend Control Flow Test Suite
+// Tests all control flow features with various edge cases
+
+// Test 1: Simple if-else
+fn abs(x: int) -> int {
+    if (x < 0) {
+        0 - x
+    } else {
+        x
+    }
+}
+
+// Test 2: Nested if-else
+fn sign(x: int) -> int {
+    if (x < 0) {
+        0 - 1
+    } else {
+        if (x > 0) {
+            1
+        } else {
+            0
+        }
+    }
+}
+
+// Test 3: While loop with counter
+fn sumUpTo(n: int) -> int {
+    let sum: int = 0;
+    let i: int = 1;
+    while (i <= n) {
+        sum = sum + i;
+        i = i + 1;
+    }
+    sum
+}
+
+// Test 4: While loop with break condition
+fn findFirst(target: int, limit: int) -> int {
+    let i: int = 0;
+    while (i < limit) {
+        if (i * i == target) {
+            return i;
+        }
+        i = i + 1;
+    }
+    0 - 1  // Not found
+}
+
+// Test 5: Complex nested control flow
+fn collatz(n: int) -> int {
+    let steps: int = 0;
+    let current: int = n;
+    while (current > 1) {
+        if (current % 2 == 0) {
+            current = current / 2;
+        } else {
+            current = (current * 3) + 1;
+        }
+        steps = steps + 1;
+    }
+    steps
+}
+
+// Test 6: Multiple sequential if-else
+fn grade(score: int) -> int {
+    if (score >= 90) {
+        4  // A
+    } else {
+        if (score >= 80) {
+            3  // B
+        } else {
+            if (score >= 70) {
+                2  // C
+            } else {
+                if (score >= 60) {
+                    1  // D
+                } else {
+                    0  // F
+                }
+            }
+        }
+    }
+}
+
+println("=== LLVM Backend Control Flow Test Suite ===");
+println("");
+
+// Run tests
+const test1a: int = abs(0 - 5);
+println("Test 1: abs(-5) = ");
+println(int_to_str(test1a));
+
+const test1b: int = abs(5);
+println("Test 1: abs(5) = ");
+println(int_to_str(test1b));
+
+const test2a: int = sign(0 - 10);
+println("Test 2: sign(-10) = ");
+println(int_to_str(test2a));
+
+const test2b: int = sign(0);
+println("Test 2: sign(0) = ");
+println(int_to_str(test2b));
+
+const test2c: int = sign(10);
+println("Test 2: sign(10) = ");
+println(int_to_str(test2c));
+
+const test3a: int = sumUpTo(10);
+println("Test 3: sumUpTo(10) = ");
+println(int_to_str(test3a));
+
+const test3b: int = sumUpTo(100);
+println("Test 3: sumUpTo(100) = ");
+println(int_to_str(test3b));
+
+const test4a: int = findFirst(49, 10);
+println("Test 4: findFirst(49, 10) = ");
+println(int_to_str(test4a));
+
+const test4b: int = findFirst(64, 10);
+println("Test 4: findFirst(64, 10) = ");
+println(int_to_str(test4b));
+
+const test5a: int = collatz(10);
+println("Test 5: collatz(10) = ");
+println(int_to_str(test5a));
+
+const test5b: int = collatz(27);
+println("Test 5: collatz(27) = ");
+println(int_to_str(test5b));
+
+const test6a: int = grade(95);
+println("Test 6: grade(95) = ");
+println(int_to_str(test6a));
+
+const test6b: int = grade(85);
+println("Test 6: grade(85) = ");
+println(int_to_str(test6b));
+
+const test6c: int = grade(75);
+println("Test 6: grade(75) = ");
+println(int_to_str(test6c));
+
+const test6d: int = grade(65);
+println("Test 6: grade(65) = ");
+println(int_to_str(test6d));
+
+const test6e: int = grade(55);
+println("Test 6: grade(55) = ");
+println(int_to_str(test6e));
+
+println("");
+println("=== All Tests Completed Successfully! ===");

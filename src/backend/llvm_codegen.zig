@@ -104,6 +104,12 @@ pub const LLVMCodeGen = struct {
         self.variables.deinit();
         self.variable_types.deinit();
         self.string_literals.deinit();
+        
+        // Free basic_blocks keys before deinit
+        var bb_iter = self.basic_blocks.keyIterator();
+        while (bb_iter.next()) |key| {
+            self.allocator.free(key.*);
+        }
         self.basic_blocks.deinit();
 
         c.LLVMDisposeBuilder(self.builder);
@@ -215,6 +221,12 @@ pub const LLVMCodeGen = struct {
         self.stack.clearRetainingCapacity();
         self.variables.clearRetainingCapacity();
         self.variable_types.clearRetainingCapacity();
+        
+        // Free basic_blocks keys before clearing
+        var bb_iter = self.basic_blocks.keyIterator();
+        while (bb_iter.next()) |key| {
+            self.allocator.free(key.*);
+        }
         self.basic_blocks.clearRetainingCapacity();
 
         // Create entry block
@@ -223,11 +235,11 @@ pub const LLVMCodeGen = struct {
             llvm_func,
             "entry",
         );
-        
+
         // Pre-scan to find all labels and create basic blocks
         var label_set = std.AutoHashMap(i64, void).init(self.allocator);
         defer label_set.deinit();
-        
+
         for (func.instructions) |inst| {
             switch (inst.op) {
                 .jump, .jump_if_false, .jump_if_true => {
@@ -236,23 +248,23 @@ pub const LLVMCodeGen = struct {
                 else => {},
             }
         }
-        
+
         // Create basic blocks for all labels
         var label_iter = label_set.keyIterator();
         while (label_iter.next()) |label_id| {
             const label_name = try std.fmt.allocPrint(self.allocator, "L{d}", .{label_id.*});
-            defer self.allocator.free(label_name);
+            // Keep label_name for HashMap key - will be freed when basic_blocks is cleared
             
             const label_name_z = try self.allocator.dupeZ(u8, label_name);
             defer self.allocator.free(label_name_z);
-            
+
             const block = c.LLVMAppendBasicBlockInContext(self.context, llvm_func, label_name_z.ptr);
             try self.basic_blocks.put(label_name, block);
         }
 
         // Position at entry and set up parameters
         c.LLVMPositionBuilderAtEnd(self.builder, entry_block);
-        
+
         // Create a temporary slot for passing values across basic blocks
         self.temp_slot = c.LLVMBuildAlloca(self.builder, self.i64_type, "temp");
 
@@ -283,17 +295,17 @@ pub const LLVMCodeGen = struct {
         for (func.instructions, 0..) |inst, idx| {
             // Check if NEXT instruction is a label target
             const next_idx = idx + 1;
-            const next_is_label = if (next_idx < func.instructions.len) 
+            const next_is_label = if (next_idx < func.instructions.len)
                 label_set.contains(@intCast(next_idx))
-            else 
+            else
                 false;
-            
+
             // Check if THIS instruction is a label target
             if (label_set.contains(@intCast(idx))) {
                 // We're at a label - need to position builder
                 const label_name = try std.fmt.allocPrint(self.allocator, "L{d}", .{idx});
                 defer self.allocator.free(label_name);
-                
+
                 if (self.basic_blocks.get(label_name)) |label_block| {
                     // Check if current block needs terminator before jumping to label
                     const current_block = c.LLVMGetInsertBlock(self.builder);
@@ -306,11 +318,11 @@ pub const LLVMCodeGen = struct {
                         // Add unconditional branch to the label
                         _ = c.LLVMBuildBr(self.builder, label_block);
                     }
-                    
+
                     // Position builder at the label block
                     c.LLVMPositionBuilderAtEnd(self.builder, label_block);
                     current_label = @intCast(idx);
-                    
+
                     // Load value from temp_slot if coming from a jump
                     if (self.temp_slot) |slot| {
                         const loaded = c.LLVMBuildLoad2(self.builder, self.i64_type, slot, "temp_load");
@@ -319,9 +331,9 @@ pub const LLVMCodeGen = struct {
                     }
                 }
             }
-            
+
             try self.generateInstruction(inst);
-            
+
             // If next instruction is a label and current block has no terminator, save stack value
             if (next_is_label and self.temp_slot != null) {
                 const current_block = c.LLVMGetInsertBlock(self.builder);
@@ -425,7 +437,7 @@ pub const LLVMCodeGen = struct {
                     const value = self.stack.items[self.stack.items.len - 1];
                     _ = c.LLVMBuildStore(self.builder, value, self.temp_slot.?);
                 }
-                
+
                 const target_label = try std.fmt.allocPrint(self.allocator, "L{d}", .{inst.operand1});
                 defer self.allocator.free(target_label);
 
@@ -477,6 +489,80 @@ pub const LLVMCodeGen = struct {
             .halt => {
                 const zero = c.LLVMConstInt(self.i64_type, 0, 0);
                 _ = c.LLVMBuildRet(self.builder, zero);
+            },
+            .array_new => {
+                // Create array: allocate (size + 1) * 8 bytes (size + elements)
+                const size = c.LLVMConstInt(self.i64_type, @bitCast(inst.operand1), 0);
+                
+                // Calculate total bytes: (size + 1) * 8
+                const one = c.LLVMConstInt(self.i64_type, 1, 0);
+                const size_plus_one = c.LLVMBuildAdd(self.builder, size, one, "size_plus_one");
+                const eight = c.LLVMConstInt(self.i64_type, 8, 0);
+                const total_bytes = c.LLVMBuildMul(self.builder, size_plus_one, eight, "total_bytes");
+                
+                // Get malloc function
+                const malloc_fn = blk: {
+                    if (self.functions.get("malloc")) |fn_val| {
+                        break :blk fn_val;
+                    }
+                    var param_types = [_]c.LLVMTypeRef{self.i64_type};
+                    const malloc_type = c.LLVMFunctionType(self.ptr_type, param_types[0..].ptr, 1, 0);
+                    const malloc_func = c.LLVMAddFunction(self.module, "malloc", malloc_type);
+                    try self.functions.put("malloc", malloc_func);
+                    break :blk malloc_func;
+                };
+                
+                var param_types2 = [_]c.LLVMTypeRef{self.i64_type};
+                const malloc_type = c.LLVMFunctionType(self.ptr_type, param_types2[0..].ptr, 1, 0);
+                var args = [_]c.LLVMValueRef{total_bytes};
+                const arr_ptr = c.LLVMBuildCall2(self.builder, malloc_type, malloc_fn, args[0..].ptr, 1, "arr");
+                
+                // Store size at index 0
+                const size_ptr = c.LLVMBuildBitCast(self.builder, arr_ptr, c.LLVMPointerTypeInContext(self.context, 0), "size_ptr");
+                _ = c.LLVMBuildStore(self.builder, size, size_ptr);
+                
+                // Push pointer onto stack
+                try self.stack.append(self.allocator, arr_ptr);
+            },
+            .array_get => {
+                // Pop index and array pointer
+                const index = self.stack.pop() orelse unreachable;
+                const arr_ptr = self.stack.pop() orelse unreachable;
+                
+                // Cast to i64 pointer
+                const arr_i64_ptr = c.LLVMBuildBitCast(self.builder, arr_ptr, c.LLVMPointerTypeInContext(self.context, 0), "arr_i64");
+                
+                // Calculate offset: index + 1 (skip size element)
+                const one = c.LLVMConstInt(self.i64_type, 1, 0);
+                const offset = c.LLVMBuildAdd(self.builder, index, one, "offset");
+                
+                // GEP to get element pointer
+                var indices = [_]c.LLVMValueRef{offset};
+                const elem_ptr = c.LLVMBuildGEP2(self.builder, self.i64_type, arr_i64_ptr, indices[0..].ptr, 1, "elem_ptr");
+                
+                // Load value
+                const value = c.LLVMBuildLoad2(self.builder, self.i64_type, elem_ptr, "arr_elem");
+                try self.stack.append(self.allocator, value);
+            },
+            .array_set => {
+                // Pop value, index, and array pointer
+                const value = self.stack.pop() orelse unreachable;
+                const index = self.stack.pop() orelse unreachable;
+                const arr_ptr = self.stack.pop() orelse unreachable;
+                
+                // Cast to i64 pointer
+                const arr_i64_ptr = c.LLVMBuildBitCast(self.builder, arr_ptr, c.LLVMPointerTypeInContext(self.context, 0), "arr_i64");
+                
+                // Calculate offset: index + 1 (skip size element)
+                const one = c.LLVMConstInt(self.i64_type, 1, 0);
+                const offset = c.LLVMBuildAdd(self.builder, index, one, "offset");
+                
+                // GEP to get element pointer
+                var indices = [_]c.LLVMValueRef{offset};
+                const elem_ptr = c.LLVMBuildGEP2(self.builder, self.i64_type, arr_i64_ptr, indices[0..].ptr, 1, "elem_ptr");
+                
+                // Store value
+                _ = c.LLVMBuildStore(self.builder, value, elem_ptr);
             },
             else => {
                 std.debug.print("Unimplemented LLVM instruction: {s}\n", .{@tagName(inst.op)});
