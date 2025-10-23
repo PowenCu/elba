@@ -104,7 +104,7 @@ pub const LLVMCodeGen = struct {
         self.variables.deinit();
         self.variable_types.deinit();
         self.string_literals.deinit();
-        
+
         // Free basic_blocks keys before deinit
         var bb_iter = self.basic_blocks.keyIterator();
         while (bb_iter.next()) |key| {
@@ -221,7 +221,7 @@ pub const LLVMCodeGen = struct {
         self.stack.clearRetainingCapacity();
         self.variables.clearRetainingCapacity();
         self.variable_types.clearRetainingCapacity();
-        
+
         // Free basic_blocks keys before clearing
         var bb_iter = self.basic_blocks.keyIterator();
         while (bb_iter.next()) |key| {
@@ -254,7 +254,7 @@ pub const LLVMCodeGen = struct {
         while (label_iter.next()) |label_id| {
             const label_name = try std.fmt.allocPrint(self.allocator, "L{d}", .{label_id.*});
             // Keep label_name for HashMap key - will be freed when basic_blocks is cleared
-            
+
             const label_name_z = try self.allocator.dupeZ(u8, label_name);
             defer self.allocator.free(label_name_z);
 
@@ -493,12 +493,91 @@ pub const LLVMCodeGen = struct {
             .array_new => {
                 // Create array: allocate (size + 1) * 8 bytes (size + elements)
                 const size = c.LLVMConstInt(self.i64_type, @bitCast(inst.operand1), 0);
-                
+
                 // Calculate total bytes: (size + 1) * 8
                 const one = c.LLVMConstInt(self.i64_type, 1, 0);
                 const size_plus_one = c.LLVMBuildAdd(self.builder, size, one, "size_plus_one");
                 const eight = c.LLVMConstInt(self.i64_type, 8, 0);
                 const total_bytes = c.LLVMBuildMul(self.builder, size_plus_one, eight, "total_bytes");
+
+                // Get malloc function
+                const malloc_fn = blk: {
+                    if (self.functions.get("malloc")) |fn_val| {
+                        break :blk fn_val;
+                    }
+                    var param_types = [_]c.LLVMTypeRef{self.i64_type};
+                    const malloc_type = c.LLVMFunctionType(self.ptr_type, param_types[0..].ptr, 1, 0);
+                    const malloc_func = c.LLVMAddFunction(self.module, "malloc", malloc_type);
+                    try self.functions.put("malloc", malloc_func);
+                    break :blk malloc_func;
+                };
+
+                var param_types2 = [_]c.LLVMTypeRef{self.i64_type};
+                const malloc_type = c.LLVMFunctionType(self.ptr_type, param_types2[0..].ptr, 1, 0);
+                var args = [_]c.LLVMValueRef{total_bytes};
+                const arr_ptr = c.LLVMBuildCall2(self.builder, malloc_type, malloc_fn, args[0..].ptr, 1, "arr");
+
+                // Store size at index 0
+                const size_ptr = c.LLVMBuildBitCast(self.builder, arr_ptr, c.LLVMPointerTypeInContext(self.context, 0), "size_ptr");
+                _ = c.LLVMBuildStore(self.builder, size, size_ptr);
+
+                // Convert pointer to i64 for stack storage (since our stack is i64-based)
+                const arr_as_i64 = c.LLVMBuildPtrToInt(self.builder, arr_ptr, self.i64_type, "arr_as_i64");
+                try self.stack.append(self.allocator, arr_as_i64);
+            },
+            .array_get => {
+                // Pop index and array pointer
+                const index = self.stack.pop() orelse unreachable;
+                const arr_val = self.stack.pop() orelse unreachable;
+
+                // Convert i64 to pointer if needed
+                const arr_ptr = if (c.LLVMTypeOf(arr_val) == self.ptr_type)
+                    arr_val
+                else
+                    c.LLVMBuildIntToPtr(self.builder, arr_val, self.ptr_type, "arr_ptr");
+
+                // Calculate offset: index + 1 (skip size element)
+                const one = c.LLVMConstInt(self.i64_type, 1, 0);
+                const offset = c.LLVMBuildAdd(self.builder, index, one, "offset");
+
+                // GEP to get element pointer
+                var indices = [_]c.LLVMValueRef{offset};
+                const elem_ptr = c.LLVMBuildGEP2(self.builder, self.i64_type, arr_ptr, indices[0..].ptr, 1, "elem_ptr");
+
+                // Load value
+                const value = c.LLVMBuildLoad2(self.builder, self.i64_type, elem_ptr, "arr_elem");
+                try self.stack.append(self.allocator, value);
+            },
+            .array_set => {
+                // Pop value, index, and array pointer
+                const value = self.stack.pop() orelse unreachable;
+                const index = self.stack.pop() orelse unreachable;
+                const arr_val = self.stack.pop() orelse unreachable;
+
+                // Convert i64 to pointer if needed
+                const arr_ptr = if (c.LLVMTypeOf(arr_val) == self.ptr_type)
+                    arr_val
+                else
+                    c.LLVMBuildIntToPtr(self.builder, arr_val, self.ptr_type, "arr_ptr");
+
+                // Calculate offset: index + 1 (skip size element)
+                const one = c.LLVMConstInt(self.i64_type, 1, 0);
+                const offset = c.LLVMBuildAdd(self.builder, index, one, "offset");
+
+                // GEP to get element pointer
+                var indices = [_]c.LLVMValueRef{offset};
+                const elem_ptr = c.LLVMBuildGEP2(self.builder, self.i64_type, arr_ptr, indices[0..].ptr, 1, "elem_ptr");
+
+                // Store value
+                _ = c.LLVMBuildStore(self.builder, value, elem_ptr);
+            },
+            .struct_new => {
+                // Create struct: allocate field_count * 8 bytes
+                const field_count = c.LLVMConstInt(self.i64_type, @bitCast(inst.operand1), 0);
+                
+                // Calculate total bytes: field_count * 8
+                const eight = c.LLVMConstInt(self.i64_type, 8, 0);
+                const total_bytes = c.LLVMBuildMul(self.builder, field_count, eight, "total_bytes");
                 
                 // Get malloc function
                 const malloc_fn = blk: {
@@ -515,61 +594,56 @@ pub const LLVMCodeGen = struct {
                 var param_types2 = [_]c.LLVMTypeRef{self.i64_type};
                 const malloc_type = c.LLVMFunctionType(self.ptr_type, param_types2[0..].ptr, 1, 0);
                 var args = [_]c.LLVMValueRef{total_bytes};
-                const arr_ptr = c.LLVMBuildCall2(self.builder, malloc_type, malloc_fn, args[0..].ptr, 1, "arr");
+                const struct_ptr = c.LLVMBuildCall2(self.builder, malloc_type, malloc_fn, args[0..].ptr, 1, "struct");
                 
-                // Store size at index 0
-                const size_ptr = c.LLVMBuildBitCast(self.builder, arr_ptr, c.LLVMPointerTypeInContext(self.context, 0), "size_ptr");
-                _ = c.LLVMBuildStore(self.builder, size, size_ptr);
-                
-                // Convert pointer to i64 for stack storage (since our stack is i64-based)
-                const arr_as_i64 = c.LLVMBuildPtrToInt(self.builder, arr_ptr, self.i64_type, "arr_as_i64");
-                try self.stack.append(self.allocator, arr_as_i64);
+                // Convert pointer to i64 for stack storage
+                const struct_as_i64 = c.LLVMBuildPtrToInt(self.builder, struct_ptr, self.i64_type, "struct_as_i64");
+                try self.stack.append(self.allocator, struct_as_i64);
             },
-            .array_get => {
-                // Pop index and array pointer
-                const index = self.stack.pop() orelse unreachable;
-                const arr_val = self.stack.pop() orelse unreachable;
+            .field_get => {
+                // Pop struct pointer and get field
+                const struct_val = self.stack.pop() orelse unreachable;
                 
                 // Convert i64 to pointer if needed
-                const arr_ptr = if (c.LLVMTypeOf(arr_val) == self.ptr_type)
-                    arr_val
+                const struct_ptr = if (c.LLVMTypeOf(struct_val) == self.ptr_type)
+                    struct_val
                 else
-                    c.LLVMBuildIntToPtr(self.builder, arr_val, self.ptr_type, "arr_ptr");
+                    c.LLVMBuildIntToPtr(self.builder, struct_val, self.ptr_type, "struct_ptr");
                 
-                // Calculate offset: index + 1 (skip size element)
-                const one = c.LLVMConstInt(self.i64_type, 1, 0);
-                const offset = c.LLVMBuildAdd(self.builder, index, one, "offset");
+                // Get field index
+                const field_idx = c.LLVMConstInt(self.i64_type, @bitCast(inst.operand1), 0);
                 
-                // GEP to get element pointer
-                var indices = [_]c.LLVMValueRef{offset};
-                const elem_ptr = c.LLVMBuildGEP2(self.builder, self.i64_type, arr_ptr, indices[0..].ptr, 1, "elem_ptr");
+                // GEP to get field pointer
+                var indices = [_]c.LLVMValueRef{field_idx};
+                const field_ptr = c.LLVMBuildGEP2(self.builder, self.i64_type, struct_ptr, indices[0..].ptr, 1, "field_ptr");
                 
                 // Load value
-                const value = c.LLVMBuildLoad2(self.builder, self.i64_type, elem_ptr, "arr_elem");
+                const value = c.LLVMBuildLoad2(self.builder, self.i64_type, field_ptr, "field_val");
                 try self.stack.append(self.allocator, value);
             },
-            .array_set => {
-                // Pop value, index, and array pointer
+            .field_set => {
+                // Pop value and struct pointer
                 const value = self.stack.pop() orelse unreachable;
-                const index = self.stack.pop() orelse unreachable;
-                const arr_val = self.stack.pop() orelse unreachable;
+                const struct_val = self.stack.pop() orelse unreachable;
                 
                 // Convert i64 to pointer if needed
-                const arr_ptr = if (c.LLVMTypeOf(arr_val) == self.ptr_type)
-                    arr_val
+                const struct_ptr = if (c.LLVMTypeOf(struct_val) == self.ptr_type)
+                    struct_val
                 else
-                    c.LLVMBuildIntToPtr(self.builder, arr_val, self.ptr_type, "arr_ptr");
+                    c.LLVMBuildIntToPtr(self.builder, struct_val, self.ptr_type, "struct_ptr");
                 
-                // Calculate offset: index + 1 (skip size element)
-                const one = c.LLVMConstInt(self.i64_type, 1, 0);
-                const offset = c.LLVMBuildAdd(self.builder, index, one, "offset");
+                // Get field index
+                const field_idx = c.LLVMConstInt(self.i64_type, @bitCast(inst.operand1), 0);
                 
-                // GEP to get element pointer
-                var indices = [_]c.LLVMValueRef{offset};
-                const elem_ptr = c.LLVMBuildGEP2(self.builder, self.i64_type, arr_ptr, indices[0..].ptr, 1, "elem_ptr");
+                // GEP to get field pointer
+                var indices = [_]c.LLVMValueRef{field_idx};
+                const field_ptr = c.LLVMBuildGEP2(self.builder, self.i64_type, struct_ptr, indices[0..].ptr, 1, "field_ptr");
                 
                 // Store value
-                _ = c.LLVMBuildStore(self.builder, value, elem_ptr);
+                _ = c.LLVMBuildStore(self.builder, value, field_ptr);
+                
+                // Push struct back onto stack for chaining
+                try self.stack.append(self.allocator, struct_val);
             },
             else => {
                 std.debug.print("Unimplemented LLVM instruction: {s}\n", .{@tagName(inst.op)});
