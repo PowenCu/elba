@@ -521,16 +521,20 @@ pub const LLVMCodeGen = struct {
                 const size_ptr = c.LLVMBuildBitCast(self.builder, arr_ptr, c.LLVMPointerTypeInContext(self.context, 0), "size_ptr");
                 _ = c.LLVMBuildStore(self.builder, size, size_ptr);
                 
-                // Push pointer onto stack
-                try self.stack.append(self.allocator, arr_ptr);
+                // Convert pointer to i64 for stack storage (since our stack is i64-based)
+                const arr_as_i64 = c.LLVMBuildPtrToInt(self.builder, arr_ptr, self.i64_type, "arr_as_i64");
+                try self.stack.append(self.allocator, arr_as_i64);
             },
             .array_get => {
                 // Pop index and array pointer
                 const index = self.stack.pop() orelse unreachable;
-                const arr_ptr = self.stack.pop() orelse unreachable;
+                const arr_val = self.stack.pop() orelse unreachable;
                 
-                // Cast to i64 pointer
-                const arr_i64_ptr = c.LLVMBuildBitCast(self.builder, arr_ptr, c.LLVMPointerTypeInContext(self.context, 0), "arr_i64");
+                // Convert i64 to pointer if needed
+                const arr_ptr = if (c.LLVMTypeOf(arr_val) == self.ptr_type)
+                    arr_val
+                else
+                    c.LLVMBuildIntToPtr(self.builder, arr_val, self.ptr_type, "arr_ptr");
                 
                 // Calculate offset: index + 1 (skip size element)
                 const one = c.LLVMConstInt(self.i64_type, 1, 0);
@@ -538,7 +542,7 @@ pub const LLVMCodeGen = struct {
                 
                 // GEP to get element pointer
                 var indices = [_]c.LLVMValueRef{offset};
-                const elem_ptr = c.LLVMBuildGEP2(self.builder, self.i64_type, arr_i64_ptr, indices[0..].ptr, 1, "elem_ptr");
+                const elem_ptr = c.LLVMBuildGEP2(self.builder, self.i64_type, arr_ptr, indices[0..].ptr, 1, "elem_ptr");
                 
                 // Load value
                 const value = c.LLVMBuildLoad2(self.builder, self.i64_type, elem_ptr, "arr_elem");
@@ -548,10 +552,13 @@ pub const LLVMCodeGen = struct {
                 // Pop value, index, and array pointer
                 const value = self.stack.pop() orelse unreachable;
                 const index = self.stack.pop() orelse unreachable;
-                const arr_ptr = self.stack.pop() orelse unreachable;
+                const arr_val = self.stack.pop() orelse unreachable;
                 
-                // Cast to i64 pointer
-                const arr_i64_ptr = c.LLVMBuildBitCast(self.builder, arr_ptr, c.LLVMPointerTypeInContext(self.context, 0), "arr_i64");
+                // Convert i64 to pointer if needed
+                const arr_ptr = if (c.LLVMTypeOf(arr_val) == self.ptr_type)
+                    arr_val
+                else
+                    c.LLVMBuildIntToPtr(self.builder, arr_val, self.ptr_type, "arr_ptr");
                 
                 // Calculate offset: index + 1 (skip size element)
                 const one = c.LLVMConstInt(self.i64_type, 1, 0);
@@ -559,7 +566,7 @@ pub const LLVMCodeGen = struct {
                 
                 // GEP to get element pointer
                 var indices = [_]c.LLVMValueRef{offset};
-                const elem_ptr = c.LLVMBuildGEP2(self.builder, self.i64_type, arr_i64_ptr, indices[0..].ptr, 1, "elem_ptr");
+                const elem_ptr = c.LLVMBuildGEP2(self.builder, self.i64_type, arr_ptr, indices[0..].ptr, 1, "elem_ptr");
                 
                 // Store value
                 _ = c.LLVMBuildStore(self.builder, value, elem_ptr);

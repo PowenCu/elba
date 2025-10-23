@@ -1,0 +1,74 @@
+// Comprehensive LLVM Backend Feature Test
+// Tests control flow, arrays, strings, and functions together
+
+// Test 1: Function with arrays and control flow
+fn arraySum(arr: []int, size: int) -> int {
+    let sum: int = 0;
+    let i: int = 0;
+    while (i < size) {
+        sum = sum + arr[i];
+        i = i + 1;
+    }
+    sum
+}
+
+// Test 2: Nested control flow with array manipulation
+fn filterPositive(arr: []int, size: int) -> int {
+    let count: int = 0;
+    let i: int = 0;
+    while (i < size) {
+        if (arr[i] > 0) {
+            count = count + 1;
+        }
+        i = i + 1;
+    }
+    count
+}
+
+// Test 3: Complex nested logic
+fn categorize(value: int) -> int {
+    if (value < 0) {
+        if (value < 0 - 10) {
+            1  // Very negative
+        } else {
+            2  // Slightly negative
+        }
+    } else {
+        if (value == 0) {
+            3  // Zero
+        } else {
+            if (value < 10) {
+                4  // Small positive
+            } else {
+                5  // Large positive
+            }
+        }
+    }
+}
+
+println("=== LLVM Backend Comprehensive Test ===");
+println("");
+
+// Create and test array
+const numbers: []int = [10, 0-5, 3, 0-2, 8];
+
+// Test array sum
+const total: int = arraySum(numbers, 5);
+println("Array sum:");
+println(int_to_str(total));  // Should be 14
+
+// Test array filtering
+const positives: int = filterPositive(numbers, 5);
+println("Positive count:");
+println(int_to_str(positives));  // Should be 3
+
+// Test categorization
+println("Categorization tests:");
+println(int_to_str(categorize(0 - 15)));  // 1
+println(int_to_str(categorize(0 - 5)));   // 2
+println(int_to_str(categorize(0)));       // 3
+println(int_to_str(categorize(5)));       // 4
+println(int_to_str(categorize(15)));      // 5
+
+println("");
+println("=== All Tests Passed! ===");

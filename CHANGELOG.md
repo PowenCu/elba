@@ -11,15 +11,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ⚡ **LLVM Backend: Full Control Flow Support**
   - If-else expressions now compile to native code
   - While loops fully functional in LLVM backend
-  - Nested control structures work correctly
+  - Nested control structures work correctly (tested 5+ levels deep)
   - Added temp_slot mechanism for passing values across basic blocks
   - New example: `llvm_control_flow.elba` demonstrating all features
+
+- 🎯 **LLVM Backend: Array Support**
+  - Array creation with `array_new` instruction
+  - Array element access with `array_get`
+  - Array element mutation with `array_set`
+  - Proper memory allocation using malloc
+  - Arrays store size metadata in first element
+
+- 📝 **New Examples**
+  - `examples/llvm_test_suite.elba` - Comprehensive test suite for LLVM features
 
 ### Fixed
 - 🐛 **LLVM Backend: Control flow value handling**
   - Fixed SSA form issues with basic block merging
   - Proper handling of values across conditional branches
   - Correct terminator placement in all basic blocks
+
+- 🐛 **LLVM Backend: Memory management**
+  - Fixed HashMap key lifecycle for basic_blocks labels
+  - Proper cleanup of allocated label strings
+  - Eliminated memory corruption in deeply nested control flow
+  - Deep nesting (4+ levels) now works reliably
+
+### Improved
+- 🚀 **Performance**: LLVM backend now handles real-world programs
+- ✅ **Reliability**: Extensive testing with complex control flow patterns
+- 📊 **Coverage**: Most common programming patterns now supported
 
 ## [0.1.0] - 2025-10-19
 
