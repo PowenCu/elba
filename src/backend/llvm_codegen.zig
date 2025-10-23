@@ -574,11 +574,11 @@ pub const LLVMCodeGen = struct {
             .struct_new => {
                 // Create struct: allocate field_count * 8 bytes
                 const field_count = c.LLVMConstInt(self.i64_type, @bitCast(inst.operand1), 0);
-                
+
                 // Calculate total bytes: field_count * 8
                 const eight = c.LLVMConstInt(self.i64_type, 8, 0);
                 const total_bytes = c.LLVMBuildMul(self.builder, field_count, eight, "total_bytes");
-                
+
                 // Get malloc function
                 const malloc_fn = blk: {
                     if (self.functions.get("malloc")) |fn_val| {
@@ -590,12 +590,12 @@ pub const LLVMCodeGen = struct {
                     try self.functions.put("malloc", malloc_func);
                     break :blk malloc_func;
                 };
-                
+
                 var param_types2 = [_]c.LLVMTypeRef{self.i64_type};
                 const malloc_type = c.LLVMFunctionType(self.ptr_type, param_types2[0..].ptr, 1, 0);
                 var args = [_]c.LLVMValueRef{total_bytes};
                 const struct_ptr = c.LLVMBuildCall2(self.builder, malloc_type, malloc_fn, args[0..].ptr, 1, "struct");
-                
+
                 // Convert pointer to i64 for stack storage
                 const struct_as_i64 = c.LLVMBuildPtrToInt(self.builder, struct_ptr, self.i64_type, "struct_as_i64");
                 try self.stack.append(self.allocator, struct_as_i64);
@@ -603,20 +603,20 @@ pub const LLVMCodeGen = struct {
             .field_get => {
                 // Pop struct pointer and get field
                 const struct_val = self.stack.pop() orelse unreachable;
-                
+
                 // Convert i64 to pointer if needed
                 const struct_ptr = if (c.LLVMTypeOf(struct_val) == self.ptr_type)
                     struct_val
                 else
                     c.LLVMBuildIntToPtr(self.builder, struct_val, self.ptr_type, "struct_ptr");
-                
+
                 // Get field index
                 const field_idx = c.LLVMConstInt(self.i64_type, @bitCast(inst.operand1), 0);
-                
+
                 // GEP to get field pointer
                 var indices = [_]c.LLVMValueRef{field_idx};
                 const field_ptr = c.LLVMBuildGEP2(self.builder, self.i64_type, struct_ptr, indices[0..].ptr, 1, "field_ptr");
-                
+
                 // Load value
                 const value = c.LLVMBuildLoad2(self.builder, self.i64_type, field_ptr, "field_val");
                 try self.stack.append(self.allocator, value);
@@ -625,23 +625,23 @@ pub const LLVMCodeGen = struct {
                 // Pop value and struct pointer
                 const value = self.stack.pop() orelse unreachable;
                 const struct_val = self.stack.pop() orelse unreachable;
-                
+
                 // Convert i64 to pointer if needed
                 const struct_ptr = if (c.LLVMTypeOf(struct_val) == self.ptr_type)
                     struct_val
                 else
                     c.LLVMBuildIntToPtr(self.builder, struct_val, self.ptr_type, "struct_ptr");
-                
+
                 // Get field index
                 const field_idx = c.LLVMConstInt(self.i64_type, @bitCast(inst.operand1), 0);
-                
+
                 // GEP to get field pointer
                 var indices = [_]c.LLVMValueRef{field_idx};
                 const field_ptr = c.LLVMBuildGEP2(self.builder, self.i64_type, struct_ptr, indices[0..].ptr, 1, "field_ptr");
-                
+
                 // Store value
                 _ = c.LLVMBuildStore(self.builder, value, field_ptr);
-                
+
                 // Push struct back onto stack for chaining
                 try self.stack.append(self.allocator, struct_val);
             },

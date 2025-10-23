@@ -12,7 +12,7 @@ pub const Value = union(enum) {
     string: []const u8,
     null_value,
     array: []Value,
-    struct_val: []i64,  // Struct as array of i64 values
+    struct_val: []i64, // Struct as array of i64 values
 
     pub fn format(self: Value, comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
         switch (self) {
@@ -273,13 +273,69 @@ pub const Interpreter = struct {
                                 .array => std.debug.print("[array]", .{}),
                                 .struct_val => |fields| std.debug.print("[struct with {d} fields]", .{fields.len}),
                             }
+                        } else if (std.mem.eql(u8, func_name, "int_to_str")) {
+                            const arg = self.stack.pop() orelse return error.StackUnderflow;
+                            switch (arg) {
+                                .int => |v| {
+                                    // Convert int to string
+                                    const str = try std.fmt.allocPrint(self.allocator, "{d}", .{v});
+                                    try self.stack.append(self.allocator, .{ .string = str });
+                                    if (self.verbose) std.debug.print(" -> \"{s}\"\n", .{str});
+                                },
+                                else => {
+                                    std.debug.print("\nError: int_to_str expects int argument\n", .{});
+                                    return error.TypeError;
+                                },
+                            }
+                        } else if (std.mem.eql(u8, func_name, "str_concat")) {
+                            const b = self.stack.pop() orelse return error.StackUnderflow;
+                            const a = self.stack.pop() orelse return error.StackUnderflow;
+                            
+                            const str_a = switch (a) {
+                                .string => |s| s,
+                                else => {
+                                    std.debug.print("\nError: str_concat expects string arguments\n", .{});
+                                    return error.TypeError;
+                                },
+                            };
+                            const str_b = switch (b) {
+                                .string => |s| s,
+                                else => {
+                                    std.debug.print("\nError: str_concat expects string arguments\n", .{});
+                                    return error.TypeError;
+                                },
+                            };
+                            
+                            // Concatenate strings
+                            const result = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{ str_a, str_b });
+                            try self.stack.append(self.allocator, .{ .string = result });
+                            if (self.verbose) std.debug.print(" -> \"{s}\"\n", .{result});
+                        } else if (std.mem.eql(u8, func_name, "str_len")) {
+                            const arg = self.stack.pop() orelse return error.StackUnderflow;
+                            switch (arg) {
+                                .string => |s| {
+                                    const len: i64 = @intCast(s.len);
+                                    try self.stack.append(self.allocator, .{ .int = len });
+                                    if (self.verbose) std.debug.print(" -> {d}\n", .{len});
+                                },
+                                else => {
+                                    std.debug.print("\nError: str_len expects string argument\n", .{});
+                                    return error.TypeError;
+                                },
+                            }
                         } else {
                             // User-defined function call
                             std.debug.print("\nError: Function '{s}' not implemented\n", .{func_name});
                             return error.NotImplemented;
                         }
-                        // Push null as return value for now
-                        try self.stack.append(self.allocator, Value.null_value);
+                        // Don't push null for builtin functions that return values
+                        if (!std.mem.eql(u8, func_name, "println") and !std.mem.eql(u8, func_name, "print")) {
+                            // Built-in functions that return values already pushed their result
+                            // No need to push null
+                        } else {
+                            // println and print don't return anything
+                            try self.stack.append(self.allocator, Value.null_value);
+                        }
                         if (self.verbose) std.debug.print(" {s}\n", .{func_name});
                     }
                 },
@@ -313,7 +369,7 @@ pub const Interpreter = struct {
                 .field_get => {
                     const struct_val = self.stack.pop() orelse return error.StackUnderflow;
                     const field_idx: usize = @intCast(inst.operand1);
-                    
+
                     switch (struct_val) {
                         .struct_val => |fields| {
                             if (field_idx >= fields.len) {
@@ -334,7 +390,7 @@ pub const Interpreter = struct {
                     const value = self.stack.pop() orelse return error.StackUnderflow;
                     const struct_val = self.stack.pop() orelse return error.StackUnderflow;
                     const field_idx: usize = @intCast(inst.operand1);
-                    
+
                     switch (struct_val) {
                         .struct_val => |fields| {
                             if (field_idx >= fields.len) {
