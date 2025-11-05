@@ -6,7 +6,16 @@ This document tracks the conversion of the Elba programming language compiler fr
 
 ## Progress Status
 
-### Completed Components ✅
+### Completed (~3,400 lines converted - 31%)
+
+1. **Build System** - Makefile with proper C11 compilation
+2. **Common Utilities** (src/common.c/.h) - Memory management, dynamic arrays, slices, error handling
+3. **Lexer** (src/frontend/lexer.c/.h) - Complete tokenization with all Elba keywords and operators
+4. **AST** (src/frontend/ast.c/.h) - Full abstract syntax tree with types, values, expressions, and statements
+5. **Error Reporter** (src/utils/error_reporter.c/.h) - Source error reporting with context
+6. **Main Entry Point** (src/main.c) - CLI with version/help/demo modes
+
+### Pending Conversion (~7,600 lines remaining - 69%)
 
 1. **Build System**
    - Created Makefile replacing build.zig
@@ -28,13 +37,21 @@ This document tracks the conversion of the Elba programming language compiler fr
    - All operators and punctuation
    - Token location tracking
 
-4. **Error Reporter** (`src/utils/error_reporter.c/.h`)
+4. **AST** (`src/frontend/ast.c/.h`)
+   - Complete type system (int, float, string, bool, user types, generics, arrays, optionals, unions)
+   - Value system (all value types)
+   - Expression system (literals, variables, binary/unary ops, blocks, if/while/for, functions, structs, arrays, etc.)
+   - Statement system (declarations, functions, structs, type aliases, imports, returns)
+   - Memory management functions (create/free for all AST nodes)
+   - Type equality and numeric checks
+
+5. **Error Reporter** (`src/utils/error_reporter.c/.h`)
    - Line/column calculation
    - Error message formatting
    - Source context display
    - Caret positioning under errors
 
-5. **Main Entry Point** (`src/main.c`)
+6. **Main Entry Point** (`src/main.c`)
    - Basic CLI argument handling
    - Version and help commands
    - Demo/test mode for lexer and error reporter
@@ -45,7 +62,7 @@ The following components still need to be converted from Zig to C:
 
 #### Frontend Components
 - [ ] **Parser** (1,623 lines) - Parse tokens into AST
-- [ ] **AST** (320 lines) - Abstract syntax tree definitions
+- [x] **AST** (320 lines) - Abstract syntax tree definitions
 - [ ] **Typechecker** (1,751 lines) - Type checking and inference
 
 #### Backend Components
