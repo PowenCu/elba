@@ -29,6 +29,8 @@ C_SOURCES = \
 	$(SRC_DIR)/backend/interpreter.c \
 	$(SRC_DIR)/backend/ir.c \
 	$(SRC_DIR)/backend/ir_gen.c \
+	$(SRC_DIR)/backend/ir_optimizer.c \
+	$(SRC_DIR)/backend/ir_interp.c \
 	$(SRC_DIR)/utils/error_reporter.c 
 
 # Object files

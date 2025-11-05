@@ -6,7 +6,7 @@ This document tracks the conversion of the Elba programming language compiler fr
 
 ## Progress Status
 
-### Completed (~9,000 lines converted - 82%)
+### Completed (~9,600 lines converted - 87%)
 
 **Core Compiler Pipeline - FULLY FUNCTIONAL:**
 
@@ -19,12 +19,14 @@ This document tracks the conversion of the Elba programming language compiler fr
 7. **Interpreter** (src/backend/interpreter.c/.h) - Execute AST with full expression and statement evaluation
 8. **IR System** (src/backend/ir.c/.h) - Intermediate representation data structures
 9. **IR Generator** (src/backend/ir_gen.c/.h) - Convert AST to IR for optimization
-10. **Error Reporter** (src/utils/error_reporter.c/.h) - Source error reporting with context
-11. **Main Entry Point** (src/main.c) - CLI with version/help/demo modes and IR visualization
+10. **IR Optimizer** (src/backend/ir_optimizer.c/.h) - Optimize IR with multiple passes
+11. **IR Interpreter** (src/backend/ir_interp.c/.h) - Execute IR directly (stack-based VM)
+12. **Error Reporter** (src/utils/error_reporter.c/.h) - Source error reporting with context
+13. **Main Entry Point** (src/main.c) - CLI with version/help/demo modes and IR visualization
 
-**Status**: The compiler is **FULLY FUNCTIONAL** and now includes IR generation.
+**Status**: The compiler is **FULLY FUNCTIONAL** with complete IR pipeline (generation, optimization, interpretation).
 
-### Pending Conversion (~2,000 lines remaining - 18%)
+### Pending Conversion (~1,400 lines remaining - 13%)
 
 **Optional Components (for production features):**
 
@@ -133,8 +135,8 @@ The following components still need to be converted from Zig to C:
 - [x] **Interpreter** (1,138 lines) - AST interpreter
 - [x] **IR** (410 lines) - Intermediate representation structures
 - [x] **IR Generator** (601 lines) - Convert AST to IR
-- [ ] **IR Optimizer** (418 lines) - Optimize IR
-- [ ] **IR Interpreter** (584 lines) - Execute IR
+- [x] **IR Optimizer** (418 lines) - Optimize IR with multiple passes
+- [x] **IR Interpreter** (584 lines) - Execute IR directly (stack-based VM)
 - [ ] **LLVM Codegen** (1,004 lines) - Generate LLVM IR
 
 #### Codegen Components

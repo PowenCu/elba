@@ -8,6 +8,8 @@
 #include "backend/interpreter.h"
 #include "backend/ir.h"
 #include "backend/ir_gen.h"
+#include "backend/ir_optimizer.h"
+#include "backend/ir_interp.h"
 #include "utils/error_reporter.h"
 
 // Helper to print expression type
@@ -118,10 +120,20 @@ int main(int argc, char** argv) {
     }
     
     bool show_ir = false;
-    if (strcmp(argv[1], "--test") == 0 || 
-        (argc > 2 && strcmp(argv[1], "--test") == 0 && strcmp(argv[2], "--show-ir") == 0)) {
-        if (argc > 2 && strcmp(argv[2], "--show-ir") == 0) {
-            show_ir = true;
+    bool optimize = false;
+    bool use_ir_interp = false;
+    
+    if (strcmp(argv[1], "--test") == 0) {
+        // Parse options
+        for (int i = 2; i < argc; i++) {
+            if (strcmp(argv[i], "--show-ir") == 0) {
+                show_ir = true;
+            } else if (strcmp(argv[i], "--optimize") == 0) {
+                optimize = true;
+                show_ir = true;  // Show IR when optimizing
+            } else if (strcmp(argv[i], "--ir-interp") == 0) {
+                use_ir_interp = true;
+            }
         }
         // Test parser, typechecker, and interpreter with sample code
         const char* test_source = 
@@ -227,7 +239,8 @@ int main(int argc, char** argv) {
         }
         
         // Generate IR if requested
-        if (show_ir) {
+        IRProgram* ir_program = NULL;
+        if (show_ir || use_ir_interp || optimize) {
             printf("=== IR Generation ===\n");
             
             IRGenerator* ir_gen = ir_gen_create(arena);
@@ -239,31 +252,63 @@ int main(int argc, char** argv) {
             }
             
             // Build program
-            IRProgram* ir_program = ir_gen_build_program(ir_gen);
+            ir_program = ir_gen_build_program(ir_gen);
             
             printf("✓ IR generation completed\n\n");
             
+            // Optimize if requested
+            if (optimize) {
+                printf("=== IR Optimization ===\n");
+                IROptimizer* optimizer = ir_optimizer_create(arena);
+                ir_optimizer_set_verbose(optimizer, true);
+                ir_optimizer_optimize_program(optimizer, ir_program);
+                printf("✓ IR optimization completed\n\n");
+                ir_optimizer_print_stats(optimizer);
+                printf("\n");
+                ir_optimizer_free(optimizer);
+            }
+            
             // Print IR
-            ir_program_print(ir_program);
+            if (show_ir) {
+                ir_program_print(ir_program);
+            }
             
             ir_gen_free(ir_gen);
         }
         
-        // Interpret
+        // Execute
         printf("=== Execution ===\n");
         
-        InterpResult interp_result = interp_run_program(
-            (Stmt**)stmts_array->items,
-            stmts_array->length,
-            arena
-        );
-        
-        if (!interp_result.success) {
-            fprintf(stderr, "\n✗ Runtime error: %s\n", interp_result.error_message);
-            parser_free(parser);
-            dyn_array_free(stmts_array);
-            arena_free(arena);
-            return 1;
+        if (use_ir_interp && ir_program) {
+            // Execute using IR interpreter
+            printf("(Using IR interpreter)\n");
+            IRInterpreter* ir_interp = ir_interp_create(arena);
+            IRInterpResult ir_result = ir_interp_execute(ir_interp, ir_program);
+            
+            if (!ir_result.success) {
+                fprintf(stderr, "\n✗ IR execution error: %s\n", ir_result.error_message);
+                parser_free(parser);
+                dyn_array_free(stmts_array);
+                arena_free(arena);
+                return 1;
+            }
+            
+            ir_interp_free(ir_interp);
+        } else {
+            // Execute using AST interpreter
+            InterpResult interp_result = interp_run_program(
+                (Stmt**)stmts_array->items,
+                stmts_array->length,
+                arena
+            );
+            
+            if (!interp_result.success) {
+                fprintf(stderr, "\n✗ Runtime error: %s\n", interp_result.error_message);
+                parser_free(parser);
+                dyn_array_free(stmts_array);
+                arena_free(arena);
+                return 1;
+            }
         }
         
         printf("\n✓ Program executed successfully\n");
@@ -272,12 +317,17 @@ int main(int argc, char** argv) {
         dyn_array_free(stmts_array);
         arena_free(arena);
         
-        if (show_ir) {
-            printf("\nNote: IR system now functional. IR optimizer and interpreter coming soon.\n");
+        if (optimize) {
+            printf("\nNote: IR optimization and IR interpreter now functional!\n");
+            printf("Options: --test [--show-ir] [--optimize] [--ir-interp]\n");
+        } else if (show_ir) {
+            printf("\nNote: Use --test --optimize to see IR optimization in action.\n");
+            printf("      Use --test --ir-interp to execute via IR interpreter.\n");
         } else {
             printf("\nNote: Use --test --show-ir to see generated IR code.\n");
+            printf("      Use --test --optimize to optimize and display IR.\n");
         }
-        printf("This demonstrates the C port with complete frontend, IR generation, and interpreter.\n");
+        printf("This demonstrates the C port with complete frontend, IR system, and interpreters.\n");
         
         return 0;
     }
