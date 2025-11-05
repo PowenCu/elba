@@ -7,10 +7,24 @@ LDFLAGS =
 LIBS = -lm 
 
 # LLVM configuration (optional)
-LLVM_CONFIG = llvm-config
-LLVM_CFLAGS = $(shell $(LLVM_CONFIG) --cflags 2>/dev/null || echo "")
-LLVM_LDFLAGS = $(shell $(LLVM_CONFIG) --ldflags 2>/dev/null || echo "")
-LLVM_LIBS = $(shell $(LLVM_CONFIG) --libs core executionengine mcjit native 2>/dev/null || echo "")
+LLVM_CONFIG := $(shell which llvm-config 2>/dev/null)
+ifneq ($(LLVM_CONFIG),)
+    # LLVM found - try to get flags
+    LLVM_CFLAGS := $(shell $(LLVM_CONFIG) --cflags 2>/dev/null)
+    LLVM_LDFLAGS := $(shell $(LLVM_CONFIG) --ldflags 2>/dev/null)
+    LLVM_LIBS := $(shell $(LLVM_CONFIG) --libs core analysis 2>/dev/null)
+    ifneq ($(LLVM_CFLAGS),)
+        # Successfully got LLVM flags
+        CFLAGS += $(LLVM_CFLAGS) -DENABLE_LLVM
+        LDFLAGS += $(LLVM_LDFLAGS)
+        LIBS += $(LLVM_LIBS)
+        $(info LLVM support enabled)
+    else
+        $(info LLVM found but configuration failed - building without LLVM support)
+    endif
+else
+    $(info LLVM not found - building without LLVM support)
+endif
 
 # Directories
 SRC_DIR = src
@@ -31,6 +45,8 @@ C_SOURCES = \
 	$(SRC_DIR)/backend/ir_gen.c \
 	$(SRC_DIR)/backend/ir_optimizer.c \
 	$(SRC_DIR)/backend/ir_interp.c \
+	$(SRC_DIR)/backend/llvm_codegen.c \
+	$(SRC_DIR)/codegen/c_codegen.c \
 	$(SRC_DIR)/utils/error_reporter.c 
 
 # Object files
@@ -53,11 +69,11 @@ directories:
 	@mkdir -p $(OBJ_DIR)/utils
 
 $(TARGET): $(OBJECTS)
-	$(CC) $(OBJECTS) -o $(TARGET) $(LDFLAGS) $(LIBS) $(LLVM_LDFLAGS) $(LLVM_LIBS)
+	$(CC) $(OBJECTS) -o $(TARGET) $(LIBS) $(LDFLAGS)
 	@echo "Build complete: $(TARGET)"
 
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c
-	$(CC) $(CFLAGS) $(LLVM_CFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
 	rm -rf $(BUILD_DIR) $(BIN_DIR)

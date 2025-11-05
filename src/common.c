@@ -133,3 +133,66 @@ Error error_new(ErrorCode code, const char* message) {
 bool error_is_ok(Error err) {
     return err.code == ERR_OK;
 }
+
+// Simple hash function
+static unsigned long hash_string(const char* str) {
+    unsigned long hash = 5381;
+    int c;
+    while ((c = *str++)) {
+        hash = ((hash << 5) + hash) + c;
+    }
+    return hash;
+}
+
+// HashMap implementation
+HashMap hashmap_create(Arena* arena, size_t bucket_count) {
+    HashMap map;
+    map.arena = arena;
+    map.bucket_count = bucket_count;
+    map.buckets = (HashMapEntry**)arena_alloc(arena, sizeof(HashMapEntry*) * bucket_count);
+    for (size_t i = 0; i < bucket_count; i++) {
+        map.buckets[i] = NULL;
+    }
+    return map;
+}
+
+void hashmap_set(HashMap* map, const char* key, void* value) {
+    unsigned long hash = hash_string(key);
+    size_t index = hash % map->bucket_count;
+    
+    // Check if key already exists
+    HashMapEntry* entry = map->buckets[index];
+    while (entry) {
+        if (strcmp(entry->key, key) == 0) {
+            entry->value = value;
+            return;
+        }
+        entry = entry->next;
+    }
+    
+    // Create new entry
+    HashMapEntry* new_entry = (HashMapEntry*)arena_alloc(map->arena, sizeof(HashMapEntry));
+    new_entry->key = key;
+    new_entry->value = value;
+    new_entry->next = map->buckets[index];
+    map->buckets[index] = new_entry;
+}
+
+void* hashmap_get(HashMap* map, const char* key) {
+    unsigned long hash = hash_string(key);
+    size_t index = hash % map->bucket_count;
+    
+    HashMapEntry* entry = map->buckets[index];
+    while (entry) {
+        if (strcmp(entry->key, key) == 0) {
+            return entry->value;
+        }
+        entry = entry->next;
+    }
+    
+    return NULL;
+}
+
+bool hashmap_has(HashMap* map, const char* key) {
+    return hashmap_get(map, key) != NULL;
+}

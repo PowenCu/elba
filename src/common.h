@@ -61,4 +61,22 @@ Error error_ok(void);
 Error error_new(ErrorCode code, const char* message);
 bool error_is_ok(Error err);
 
+// Simple hash map implementation
+typedef struct HashMapEntry {
+    const char* key;
+    void* value;
+    struct HashMapEntry* next;
+} HashMapEntry;
+
+typedef struct {
+    Arena* arena;
+    HashMapEntry** buckets;
+    size_t bucket_count;
+} HashMap;
+
+HashMap hashmap_create(Arena* arena, size_t bucket_count);
+void hashmap_set(HashMap* map, const char* key, void* value);
+void* hashmap_get(HashMap* map, const char* key);
+bool hashmap_has(HashMap* map, const char* key);
+
 #endif // ELBA_COMMON_H

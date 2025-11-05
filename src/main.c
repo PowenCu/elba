@@ -10,6 +10,8 @@
 #include "backend/ir_gen.h"
 #include "backend/ir_optimizer.h"
 #include "backend/ir_interp.h"
+#include "backend/llvm_codegen.h"
+#include "codegen/c_codegen.h"
 #include "utils/error_reporter.h"
 
 // Helper to print expression type
@@ -96,10 +98,20 @@ int main(int argc, char** argv) {
     if (strcmp(argv[1], "--help") == 0) {
         printf("Elba - A modern, statically-typed programming language\n\n");
         printf("USAGE:\n");
-        printf("  elba <file>         Run an Elba source file (coming soon)\n");
-        printf("  elba --test         Run full compiler pipeline demo\n");
-        printf("  elba --version      Show version information\n");
-        printf("  elba --help         Show this help message\n\n");
+        printf("  elba <file>              Run an Elba source file (coming soon)\n");
+        printf("  elba --test              Run full compiler pipeline demo\n");
+        printf("  elba --version           Show version information\n");
+        printf("  elba --help              Show this help message\n\n");
+        printf("OPTIONS:\n");
+        printf("  --show-ir                Display generated IR\n");
+        printf("  --optimize               Enable IR optimization\n");
+        printf("  --ir-interp              Use IR interpreter instead of AST\n");
+        printf("  --emit-c <file>          Generate C code\n");
+#ifdef ENABLE_LLVM
+        printf("  --emit-llvm <file>       Generate LLVM IR (requires LLVM)\n");
+        printf("  --emit-obj <file>        Generate object file (requires LLVM)\n");
+#endif
+        printf("\n");
         printf("FEATURES:\n");
         printf("  • Static type checking with type inference\n");
         printf("  • Variables: const (immutable), let (mutable)\n");
@@ -113,8 +125,15 @@ int main(int argc, char** argv) {
         printf("  ✓ Lexer: Tokenization\n");
         printf("  ✓ Parser: AST construction\n");
         printf("  ✓ Typechecker: Type inference & validation\n");
-        printf("  ✓ Interpreter: Program execution\n");
-        printf("  • Advanced features (IR, LLVM, C codegen): Optional\n\n");
+        printf("  ✓ Interpreter: AST and IR execution\n");
+        printf("  ✓ IR System: Generation and optimization\n");
+        printf("  ✓ C Codegen: Transpilation to C\n");
+#ifdef ENABLE_LLVM
+        printf("  ✓ LLVM Codegen: Native code generation\n");
+#else
+        printf("  ✗ LLVM Codegen: Not available (LLVM not found)\n");
+#endif
+        printf("\n");
         printf("For more information, see README.md and C_CONVERSION.md\n");
         return 0;
     }
@@ -122,6 +141,9 @@ int main(int argc, char** argv) {
     bool show_ir = false;
     bool optimize = false;
     bool use_ir_interp = false;
+    const char* emit_c_file = NULL;
+    const char* emit_llvm_file = NULL;
+    const char* emit_obj_file = NULL;
     
     if (strcmp(argv[1], "--test") == 0) {
         // Parse options
@@ -133,6 +155,12 @@ int main(int argc, char** argv) {
                 show_ir = true;  // Show IR when optimizing
             } else if (strcmp(argv[i], "--ir-interp") == 0) {
                 use_ir_interp = true;
+            } else if (strcmp(argv[i], "--emit-c") == 0 && i + 1 < argc) {
+                emit_c_file = argv[++i];
+            } else if (strcmp(argv[i], "--emit-llvm") == 0 && i + 1 < argc) {
+                emit_llvm_file = argv[++i];
+            } else if (strcmp(argv[i], "--emit-obj") == 0 && i + 1 < argc) {
+                emit_obj_file = argv[++i];
             }
         }
         // Test parser, typechecker, and interpreter with sample code
@@ -272,6 +300,64 @@ int main(int argc, char** argv) {
             if (show_ir) {
                 ir_program_print(ir_program);
             }
+            
+            // Generate C code if requested
+            if (emit_c_file && ir_program) {
+                printf("=== C Code Generation ===\n");
+                CCodeGen* c_gen = c_codegen_create(arena);
+                const char* c_code = c_codegen_generate(c_gen, ir_program);
+                
+                if (c_codegen_write_file(c_gen, emit_c_file)) {
+                    printf("✓ C code generated: %s\n\n", emit_c_file);
+                } else {
+                    fprintf(stderr, "✗ Failed to write C code\n\n");
+                }
+                
+                c_codegen_free(c_gen);
+            }
+            
+#ifdef ENABLE_LLVM
+            // Generate LLVM IR if requested
+            if (emit_llvm_file && ir_program) {
+                printf("=== LLVM IR Generation ===\n");
+                LLVMCodeGen* llvm_gen = llvm_codegen_create(arena, "elba_module");
+                
+                if (llvm_codegen_generate(llvm_gen, ir_program)) {
+                    if (llvm_codegen_emit_ir(llvm_gen, emit_llvm_file)) {
+                        printf("✓ LLVM IR generated: %s\n\n", emit_llvm_file);
+                    } else {
+                        fprintf(stderr, "✗ Failed to write LLVM IR\n\n");
+                    }
+                } else {
+                    fprintf(stderr, "✗ LLVM code generation failed\n\n");
+                }
+                
+                llvm_codegen_free(llvm_gen);
+            }
+            
+            // Generate object file if requested
+            if (emit_obj_file && ir_program) {
+                printf("=== LLVM Object File Generation ===\n");
+                LLVMCodeGen* llvm_gen = llvm_codegen_create(arena, "elba_module");
+                
+                if (llvm_codegen_generate(llvm_gen, ir_program)) {
+                    if (llvm_codegen_emit_object(llvm_gen, emit_obj_file)) {
+                        printf("✓ Object file generated: %s\n\n", emit_obj_file);
+                    } else {
+                        fprintf(stderr, "✗ Failed to write object file\n\n");
+                    }
+                } else {
+                    fprintf(stderr, "✗ LLVM code generation failed\n\n");
+                }
+                
+                llvm_codegen_free(llvm_gen);
+            }
+#else
+            // LLVM not available
+            if (emit_llvm_file || emit_obj_file) {
+                fprintf(stderr, "✗ LLVM code generation not available (rebuild with LLVM support)\n\n");
+            }
+#endif
             
             ir_gen_free(ir_gen);
         }
