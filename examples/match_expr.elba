@@ -1,0 +1,47 @@
+// Match Expression Examples
+
+println("=== Match Expression Tests ===");
+println("");
+
+// Match with literals
+const x: int = 2;
+const result1: str = match (x) {
+    1 => "one",
+    2 => "two",
+    3 => "three",
+    _ => "other"
+};
+const msg1: str = str_concat("x = 2 matched to: ", result1);
+println(msg1);
+
+// Match with ranges
+const score: int = 85;
+const grade: str = match (score) {
+    90..100 => "A",
+    80..90 => "B",
+    70..80 => "C",
+    60..70 => "D",
+    _ => "F"
+};
+const msg2: str = str_concat("Score 85 gets grade: ", grade);
+println(msg2);
+
+// Match with variable capture
+const value: int = 42;
+const message: str = match (value) {
+    0 => "zero",
+    n => str_concat("The value is ", int_to_str(n))
+};
+println(message);
+
+// Match with booleans
+const flag: bool = true;
+const status: str = match (flag) {
+    true => "enabled",
+    false => "disabled"
+};
+const msg3: str = str_concat("Flag status: ", status);
+println(msg3);
+
+println("");
+println("=== Match Expression Complete! ===");

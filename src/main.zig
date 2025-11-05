@@ -199,11 +199,26 @@ fn runFile(allocator: std.mem.Allocator, file_path: []const u8, options: cli.Opt
         // Execute if type check passed and not in check-only mode
         if (!options.no_execute) {
             interpreter.evalStmt(&stmt, &env) catch |err| {
-                if (err == error.EarlyReturn) {
-                    std.debug.print("Error: 'return' statement outside of function\n", .{});
-                    return err;
+                switch (err) {
+                    error.EarlyReturn => {
+                        std.debug.print("Error: 'return' statement outside of function\n", .{});
+                        return err;
+                    },
+                    error.UndefinedVariable => return err, // Already printed by interpreter
+                    error.IndexOutOfBounds => {
+                        std.debug.print("Error: Array index out of bounds\n", .{});
+                        return err;
+                    },
+                    error.InvalidArguments => {
+                        std.debug.print("Error: Invalid function arguments\n", .{});
+                        return err;
+                    },
+                    error.TypeError => {
+                        std.debug.print("Error: Type mismatch at runtime\n", .{});
+                        return err;
+                    },
+                    else => return err,
                 }
-                return err;
             };
         }
     }

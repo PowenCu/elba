@@ -590,3 +590,22 @@ const mixed_result: float = 5 + 2.5;
 // const circle_area_large: float = area(10.0);
 // const circle_area_small: float = area(2.5);
 // const pi_value: float = PI * 2.0;
+
+// For Loops - IMPLEMENTED
+const arr: []int = [10, 20, 30, 40, 50];
+for (i in arr) {
+    println(int_to_str(i));
+}
+
+// Match Statements - IMPLEMENTED
+fn match_example(x: int) -> str {
+    match (x) {
+        1 => "One",
+        2 => "Two",
+        3 => "Three",
+        _ => "Unknown"
+    }
+}
+
+const match1: str = match_example(1);
+const match2: str = match_example(3);

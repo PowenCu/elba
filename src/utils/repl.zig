@@ -72,7 +72,9 @@ pub fn run(allocator: std.mem.Allocator) !void {
 
     while (true) {
         // Print prompt
-        try stdout.writeAll(std.fmt.bufPrint(&line_buffer, "elba:{d}> ", .{line_num}) catch unreachable);
+        var prompt_buffer: [32]u8 = undefined;
+        const prompt = std.fmt.bufPrint(&prompt_buffer, "elba:{d}> ", .{line_num}) catch "elba> ";
+        try stdout.writeAll(prompt);
 
         // Read input
         const bytes_read = try stdin.read(&line_buffer);
@@ -142,13 +144,13 @@ pub fn run(allocator: std.mem.Allocator) !void {
         const error_reporter = ErrorReporter.init(trimmed, "<repl>");
         var lexer = Lexer.init(trimmed);
         var parser = Parser.init(ast_allocator, &lexer, trimmed, &error_reporter) catch |err| {
-            std.debug.print("Parser initialization error: {s}\n", .{@errorName(err)});
+            std.debug.print("Parser initialization failed: {s}\n", .{@errorName(err)});
             continue;
         };
 
         // Try to parse a statement
-        const stmt = parser.parseStmt() catch |err| {
-            std.debug.print("Parse error: {s}\n", .{@errorName(err)});
+        const stmt = parser.parseStmt() catch {
+            // Error reporting already done by error_reporter in parser
             continue;
         };
 
@@ -161,10 +163,13 @@ pub fn run(allocator: std.mem.Allocator) !void {
 
             // Execute
             interpreter.evalStmt(&s, &env) catch |err| {
-                if (err == error.EarlyReturn) {
-                    std.debug.print("Error: 'return' statement outside of function\n", .{});
-                } else {
-                    std.debug.print("Runtime error: {s}\n", .{@errorName(err)});
+                switch (err) {
+                    error.EarlyReturn => std.debug.print("Error: 'return' statement outside of function\n", .{}),
+                    error.UndefinedVariable => {}, // Already printed by interpreter
+                    error.IndexOutOfBounds => std.debug.print("Error: Array index out of bounds\n", .{}),
+                    error.InvalidArguments => std.debug.print("Error: Invalid function arguments\n", .{}),
+                    error.TypeError => std.debug.print("Error: Type mismatch at runtime\n", .{}),
+                    else => std.debug.print("Runtime error: {s}\n", .{@errorName(err)}),
                 }
                 continue;
             };
@@ -173,7 +178,7 @@ pub fn run(allocator: std.mem.Allocator) !void {
             if (s == .expr_stmt) {
                 // Evaluate the expression to show its value
                 const result = interpreter.evalExpr(s.expr_stmt, &env) catch |err| {
-                    std.debug.print("Evaluation error: {s}\n", .{@errorName(err)});
+                    std.debug.print("Expression evaluation error: {s}\n", .{@errorName(err)});
                     continue;
                 };
 

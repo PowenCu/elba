@@ -1,0 +1,23 @@
+// For Loop Examples
+
+println("=== For Loop with Arrays ===");
+
+const numbers: []int = [10, 20, 30, 40, 50];
+
+println("Iterating over array:");
+for (num in numbers) {
+    println(int_to_str(num));
+}
+
+println("");
+
+// Using for loops with arrays of strings
+const fruits: []str = ["apple", "banana", "cherry"];
+println("Fruit list:");
+for (fruit in fruits) {
+    const msg: str = str_concat("- ", fruit);
+    println(msg);
+}
+
+println("");
+println("=== For Loop Complete! ===");

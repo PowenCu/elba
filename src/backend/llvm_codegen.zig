@@ -23,6 +23,8 @@ pub const Error = error{
     WriteFailed,
     TargetCreationFailed,
     ObjectEmissionFailed,
+    StackUnderflow, // New: stack operation on empty stack
+    InvalidBasicBlock, // New: basic block lookup failed
 };
 
 /// LLVM Code Generator - Compiles Elba IR to native machine code via LLVM
@@ -189,6 +191,14 @@ pub const LLVMCodeGen = struct {
 
     fn declareLLVMFunction(self: *Self, func: Function) !void {
         // Create function type
+        // NOTE: Current IR is stack-based and type-erased at the IR level.
+        // All values are represented as i64 on the stack for simplicity.
+        // To support richer types:
+        // 1. Extend IR.Instruction to carry type information
+        // 2. Add type metadata to IR.Function parameters and returns
+        // 3. Map Elba types to LLVM types (struct, array, optional, union)
+        // 4. Handle type conversions and boxing/unboxing
+        // This would be a significant architectural change requiring IR redesign.
         const return_type = self.i64_type; // For now, all functions return i64
 
         var param_types = try self.allocator.alloc(c.LLVMTypeRef, func.param_count);
@@ -384,7 +394,7 @@ pub const LLVMCodeGen = struct {
             },
             .store_var => |_| {
                 if (inst.string_data) |var_name| {
-                    const value = self.stack.pop() orelse unreachable;
+                    const value = self.stack.pop() orelse return error.StackUnderflow;
                     const val_ty = c.LLVMTypeOf(value);
 
                     if (self.variables.get(var_name)) |alloca| {
@@ -420,14 +430,14 @@ pub const LLVMCodeGen = struct {
             .and_op => try self.generateLogicalOp(.and_op),
             .or_op => try self.generateLogicalOp(.or_op),
             .not_op => {
-                const value = self.stack.pop() orelse unreachable;
+                const value = self.stack.pop() orelse return error.StackUnderflow;
                 const zero = c.LLVMConstInt(self.i64_type, 0, 0);
                 const cmp = c.LLVMBuildICmp(self.builder, c.LLVMIntEQ, value, zero, "not");
                 const result = c.LLVMBuildZExt(self.builder, cmp, self.i64_type, "not_ext");
                 try self.stack.append(self.allocator, result);
             },
             .neg => {
-                const value = self.stack.pop() orelse unreachable;
+                const value = self.stack.pop() orelse return error.StackUnderflow;
                 const result = c.LLVMBuildNeg(self.builder, value, "neg");
                 try self.stack.append(self.allocator, result);
             },
@@ -441,12 +451,11 @@ pub const LLVMCodeGen = struct {
                 const target_label = try std.fmt.allocPrint(self.allocator, "L{d}", .{inst.operand1});
                 defer self.allocator.free(target_label);
 
-                if (self.basic_blocks.get(target_label)) |target_block| {
-                    _ = c.LLVMBuildBr(self.builder, target_block);
-                }
+                const target_block = self.basic_blocks.get(target_label) orelse return error.InvalidBasicBlock;
+                _ = c.LLVMBuildBr(self.builder, target_block);
             },
             .jump_if_false => {
-                const condition = self.stack.pop() orelse unreachable;
+                const condition = self.stack.pop() orelse return error.StackUnderflow;
                 const zero = c.LLVMConstInt(self.i64_type, 0, 0);
                 const cmp = c.LLVMBuildICmp(self.builder, c.LLVMIntEQ, condition, zero, "is_false");
 
@@ -459,7 +468,7 @@ pub const LLVMCodeGen = struct {
                 const continue_label_z = try self.allocator.dupeZ(u8, continue_label);
                 defer self.allocator.free(continue_label_z);
 
-                const true_block = self.basic_blocks.get(true_label) orelse unreachable;
+                const true_block = self.basic_blocks.get(true_label) orelse return error.InvalidBasicBlock;
                 const continue_block = c.LLVMAppendBasicBlockInContext(self.context, self.current_function.?, continue_label_z.ptr);
 
                 _ = c.LLVMBuildCondBr(self.builder, cmp, true_block, continue_block);
@@ -472,7 +481,7 @@ pub const LLVMCodeGen = struct {
             },
             .ret => {
                 if (self.stack.items.len > 0) {
-                    const value = self.stack.pop() orelse unreachable;
+                    const value = self.stack.pop() orelse return error.StackUnderflow;
                     _ = c.LLVMBuildRet(self.builder, value);
                 } else {
                     const zero = c.LLVMConstInt(self.i64_type, 0, 0);
@@ -480,9 +489,10 @@ pub const LLVMCodeGen = struct {
                 }
             },
             .pop => {
-                _ = self.stack.pop() orelse unreachable;
+                _ = self.stack.pop() orelse return error.StackUnderflow;
             },
             .dup => {
+                if (self.stack.items.len == 0) return error.StackUnderflow;
                 const value = self.stack.items[self.stack.items.len - 1];
                 try self.stack.append(self.allocator, value);
             },
@@ -527,8 +537,8 @@ pub const LLVMCodeGen = struct {
             },
             .array_get => {
                 // Pop index and array pointer
-                const index = self.stack.pop() orelse unreachable;
-                const arr_val = self.stack.pop() orelse unreachable;
+                const index = self.stack.pop() orelse return error.StackUnderflow;
+                const arr_val = self.stack.pop() orelse return error.StackUnderflow;
 
                 // Convert i64 to pointer if needed
                 const arr_ptr = if (c.LLVMTypeOf(arr_val) == self.ptr_type)
@@ -550,9 +560,9 @@ pub const LLVMCodeGen = struct {
             },
             .array_set => {
                 // Pop value, index, and array pointer
-                const value = self.stack.pop() orelse unreachable;
-                const index = self.stack.pop() orelse unreachable;
-                const arr_val = self.stack.pop() orelse unreachable;
+                const value = self.stack.pop() orelse return error.StackUnderflow;
+                const index = self.stack.pop() orelse return error.StackUnderflow;
+                const arr_val = self.stack.pop() orelse return error.StackUnderflow;
 
                 // Convert i64 to pointer if needed
                 const arr_ptr = if (c.LLVMTypeOf(arr_val) == self.ptr_type)
@@ -602,7 +612,7 @@ pub const LLVMCodeGen = struct {
             },
             .field_get => {
                 // Pop struct pointer and get field
-                const struct_val = self.stack.pop() orelse unreachable;
+                const struct_val = self.stack.pop() orelse return error.StackUnderflow;
 
                 // Convert i64 to pointer if needed
                 const struct_ptr = if (c.LLVMTypeOf(struct_val) == self.ptr_type)
@@ -623,8 +633,8 @@ pub const LLVMCodeGen = struct {
             },
             .field_set => {
                 // Pop value and struct pointer
-                const value = self.stack.pop() orelse unreachable;
-                const struct_val = self.stack.pop() orelse unreachable;
+                const value = self.stack.pop() orelse return error.StackUnderflow;
+                const struct_val = self.stack.pop() orelse return error.StackUnderflow;
 
                 // Convert i64 to pointer if needed
                 const struct_ptr = if (c.LLVMTypeOf(struct_val) == self.ptr_type)
@@ -653,8 +663,8 @@ pub const LLVMCodeGen = struct {
     }
 
     fn generateBinaryOp(self: *Self, op: Opcode) !void {
-        const right = self.stack.pop() orelse unreachable;
-        const left = self.stack.pop() orelse unreachable;
+        const right = self.stack.pop() orelse return error.StackUnderflow;
+        const left = self.stack.pop() orelse return error.StackUnderflow;
 
         const result = switch (op) {
             .add => c.LLVMBuildAdd(self.builder, left, right, "add"),
@@ -669,8 +679,8 @@ pub const LLVMCodeGen = struct {
     }
 
     fn generateCompareOp(self: *Self, op: Opcode) !void {
-        const right = self.stack.pop() orelse unreachable;
-        const left = self.stack.pop() orelse unreachable;
+        const right = self.stack.pop() orelse return error.StackUnderflow;
+        const left = self.stack.pop() orelse return error.StackUnderflow;
 
         const predicate: c.LLVMIntPredicate = switch (op) {
             .eq => c.LLVMIntEQ,
@@ -688,8 +698,8 @@ pub const LLVMCodeGen = struct {
     }
 
     fn generateLogicalOp(self: *Self, op: Opcode) !void {
-        const right = self.stack.pop() orelse unreachable;
-        const left = self.stack.pop() orelse unreachable;
+        const right = self.stack.pop() orelse return error.StackUnderflow;
+        const left = self.stack.pop() orelse return error.StackUnderflow;
 
         const zero = c.LLVMConstInt(self.i64_type, 0, 0);
         const left_bool = c.LLVMBuildICmp(self.builder, c.LLVMIntNE, left, zero, "left_bool");

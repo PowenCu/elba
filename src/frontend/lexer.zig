@@ -18,6 +18,9 @@ pub const Token = struct {
         if_kw,
         else_kw,
         while_kw,
+        for_kw,
+        in_kw,
+        match_kw,
         int_kw,
         float_kw,
         str_kw,
@@ -57,7 +60,9 @@ pub const Token = struct {
         colon,
         comma,
         arrow,
+        fat_arrow,
         dot,
+        dot_dot,
         question,
         invalid, // For lexer errors
     };
@@ -162,6 +167,12 @@ pub const Lexer = struct {
                     .else_kw
                 else if (std.mem.eql(u8, text, "while"))
                     .while_kw
+                else if (std.mem.eql(u8, text, "for"))
+                    .for_kw
+                else if (std.mem.eql(u8, text, "in"))
+                    .in_kw
+                else if (std.mem.eql(u8, text, "match"))
+                    .match_kw
                 else if (std.mem.eql(u8, text, "int"))
                     .int_kw
                 else if (std.mem.eql(u8, text, "float"))
@@ -225,6 +236,10 @@ pub const Lexer = struct {
                         self.index += 1;
                         break :blk .{ .tag = .equal_equal, .loc = .{ .start = start, .end = self.index } };
                     }
+                    if (self.index < self.source.len and self.source[self.index] == '>') {
+                        self.index += 1;
+                        break :blk .{ .tag = .fat_arrow, .loc = .{ .start = start, .end = self.index } };
+                    }
                     break :blk .{ .tag = .equal, .loc = .{ .start = start, .end = self.index } };
                 },
                 '!' => blk: {
@@ -265,7 +280,13 @@ pub const Lexer = struct {
                 ';' => .{ .tag = .semicolon, .loc = .{ .start = start, .end = self.index } },
                 ':' => .{ .tag = .colon, .loc = .{ .start = start, .end = self.index } },
                 ',' => .{ .tag = .comma, .loc = .{ .start = start, .end = self.index } },
-                '.' => .{ .tag = .dot, .loc = .{ .start = start, .end = self.index } },
+                '.' => blk: {
+                    if (self.index < self.source.len and self.source[self.index] == '.') {
+                        self.index += 1;
+                        break :blk .{ .tag = .dot_dot, .loc = .{ .start = start, .end = self.index } };
+                    }
+                    break :blk .{ .tag = .dot, .loc = .{ .start = start, .end = self.index } };
+                },
                 '?' => .{ .tag = .question, .loc = .{ .start = start, .end = self.index } },
                 else => .{ .tag = .invalid, .loc = .{ .start = start, .end = self.index } },
             };

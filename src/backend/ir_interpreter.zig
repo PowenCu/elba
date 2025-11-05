@@ -44,6 +44,7 @@ pub const Interpreter = struct {
     variables: std.StringHashMap(Value),
     call_stack: std.ArrayList(CallFrame),
     verbose: bool,
+    allocated_strings: std.ArrayList([]const u8), // Track allocated strings for cleanup
 
     const CallFrame = struct {
         function_name: []const u8,
@@ -59,10 +60,41 @@ pub const Interpreter = struct {
             .variables = std.StringHashMap(Value).init(allocator),
             .call_stack = try std.ArrayList(CallFrame).initCapacity(allocator, 64),
             .verbose = verbose,
+            .allocated_strings = try std.ArrayList([]const u8).initCapacity(allocator, 32),
         };
     }
 
     pub fn deinit(self: *Interpreter) void {
+        // Free allocated strings from int_to_str and str_concat
+        for (self.allocated_strings.items) |str| {
+            self.allocator.free(str);
+        }
+        self.allocated_strings.deinit(self.allocator);
+
+        // Free struct field allocations
+        var var_iter = self.variables.iterator();
+        while (var_iter.next()) |entry| {
+            switch (entry.value_ptr.*) {
+                .struct_val => |fields| {
+                    self.allocator.free(fields);
+                },
+                else => {},
+            }
+        }
+
+        // Free any struct values remaining on the stack
+        for (self.stack.items) |value| {
+            switch (value) {
+                .struct_val => |fields| {
+                    self.allocator.free(fields);
+                },
+                .array => |arr| {
+                    self.allocator.free(arr);
+                },
+                else => {},
+            }
+        }
+
         self.stack.deinit(self.allocator);
         self.variables.deinit();
         self.call_stack.deinit(self.allocator);
@@ -279,6 +311,7 @@ pub const Interpreter = struct {
                                 .int => |v| {
                                     // Convert int to string
                                     const str = try std.fmt.allocPrint(self.allocator, "{d}", .{v});
+                                    try self.allocated_strings.append(self.allocator, str); // Track for cleanup
                                     try self.stack.append(self.allocator, .{ .string = str });
                                     if (self.verbose) std.debug.print(" -> \"{s}\"\n", .{str});
                                 },
@@ -290,7 +323,7 @@ pub const Interpreter = struct {
                         } else if (std.mem.eql(u8, func_name, "str_concat")) {
                             const b = self.stack.pop() orelse return error.StackUnderflow;
                             const a = self.stack.pop() orelse return error.StackUnderflow;
-                            
+
                             const str_a = switch (a) {
                                 .string => |s| s,
                                 else => {
@@ -305,9 +338,10 @@ pub const Interpreter = struct {
                                     return error.TypeError;
                                 },
                             };
-                            
+
                             // Concatenate strings
                             const result = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{ str_a, str_b });
+                            try self.allocated_strings.append(self.allocator, result); // Track for cleanup
                             try self.stack.append(self.allocator, .{ .string = result });
                             if (self.verbose) std.debug.print(" -> \"{s}\"\n", .{result});
                         } else if (std.mem.eql(u8, func_name, "str_len")) {
@@ -412,6 +446,71 @@ pub const Interpreter = struct {
                         },
                         else => {
                             std.debug.print("\nError: field_set on non-struct value\n", .{});
+                            return error.TypeError;
+                        },
+                    }
+                },
+                .array_new => {
+                    const size: usize = @intCast(inst.operand1);
+                    const arr = try self.allocator.alloc(Value, size);
+                    // Initialize with null values
+                    for (arr) |*elem| {
+                        elem.* = Value.null_value;
+                    }
+                    try self.stack.append(self.allocator, .{ .array = arr });
+                    if (self.verbose) std.debug.print(" -> array[{d}]\n", .{size});
+                },
+                .array_get => {
+                    const index = self.stack.pop() orelse return error.StackUnderflow;
+                    const array_val = self.stack.pop() orelse return error.StackUnderflow;
+
+                    switch (array_val) {
+                        .array => |arr| {
+                            const idx: usize = switch (index) {
+                                .int => |i| @intCast(i),
+                                else => {
+                                    std.debug.print("\nError: Array index must be an integer\n", .{});
+                                    return error.TypeError;
+                                },
+                            };
+                            if (idx >= arr.len) {
+                                std.debug.print("\nError: Array index {d} out of bounds (length: {d})\n", .{ idx, arr.len });
+                                return error.IndexOutOfBounds;
+                            }
+                            try self.stack.append(self.allocator, arr[idx]);
+                            if (self.verbose) std.debug.print(" -> array[{d}]\n", .{idx});
+                        },
+                        else => {
+                            std.debug.print("\nError: array_get on non-array value\n", .{});
+                            return error.TypeError;
+                        },
+                    }
+                },
+                .array_set => {
+                    const value = self.stack.pop() orelse return error.StackUnderflow;
+                    const index = self.stack.pop() orelse return error.StackUnderflow;
+                    const array_val = self.stack.pop() orelse return error.StackUnderflow;
+
+                    switch (array_val) {
+                        .array => |arr| {
+                            const idx: usize = switch (index) {
+                                .int => |i| @intCast(i),
+                                else => {
+                                    std.debug.print("\nError: Array index must be an integer\n", .{});
+                                    return error.TypeError;
+                                },
+                            };
+                            if (idx >= arr.len) {
+                                std.debug.print("\nError: Array index {d} out of bounds (length: {d})\n", .{ idx, arr.len });
+                                return error.IndexOutOfBounds;
+                            }
+                            arr[idx] = value;
+                            // Push array back for potential chaining
+                            try self.stack.append(self.allocator, array_val);
+                            if (self.verbose) std.debug.print(" -> array[{d}] = value\n", .{idx});
+                        },
+                        else => {
+                            std.debug.print("\nError: array_set on non-array value\n", .{});
                             return error.TypeError;
                         },
                     }

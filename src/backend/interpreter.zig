@@ -50,7 +50,7 @@ pub const Environment = struct {
         return .{
             .allocator = allocator,
             .bindings = std.StringHashMap(Value).init(allocator),
-            .binding_order = std.ArrayList([]const u8).initCapacity(allocator, 0) catch unreachable,
+            .binding_order = std.ArrayList([]const u8).initCapacity(allocator, 8) catch unreachable,
             .functions = std.StringHashMap(FnValue).init(allocator),
             .builtins = std.StringHashMap(BuiltinFn).init(allocator),
             .generic_functions = std.StringHashMap(GenericFnTemplate).init(allocator),
@@ -64,7 +64,7 @@ pub const Environment = struct {
         return .{
             .allocator = allocator,
             .bindings = std.StringHashMap(Value).init(allocator),
-            .binding_order = std.ArrayList([]const u8).initCapacity(allocator, 0) catch unreachable,
+            .binding_order = std.ArrayList([]const u8).initCapacity(allocator, 8) catch unreachable,
             .functions = std.StringHashMap(FnValue).init(allocator),
             .builtins = std.StringHashMap(BuiltinFn).init(allocator),
             .generic_functions = std.StringHashMap(GenericFnTemplate).init(allocator),
@@ -431,9 +431,108 @@ pub fn evalExpr(expr: *const Expr, env: *Environment) error{ UndefinedVariable, 
             }
             return Value{ .unit = {} };
         },
+        .for_expr => |for_expr| {
+            // Evaluate the iterable
+            const iterable_value = try evalExpr(for_expr.iterable, env);
+
+            // Create scoped environment for loop
+            var scoped_env = Environment.initScoped(env.allocator, env);
+            defer scoped_env.deinit();
+
+            if (for_expr.is_range) {
+                // Range-based for loop (start..end)
+                if (iterable_value != .int) return error.TypeError;
+                const start = iterable_value.int;
+
+                // Iterable should be a binary expression with .. operator
+                // For now, we'll handle this in parser to create proper range values
+                // This is a simplified version - full impl would need range type
+                const end = start + 10; // Placeholder
+
+                var i = start;
+                while (i < end) : (i += 1) {
+                    try scoped_env.setLocal(for_expr.iterator, Value{ .int = i });
+                    _ = try evalExpr(for_expr.body, &scoped_env);
+                }
+            } else {
+                // Array-based for loop
+                if (iterable_value != .array) return error.TypeError;
+                const array = iterable_value.array;
+
+                for (array) |item| {
+                    try scoped_env.setLocal(for_expr.iterator, item);
+                    _ = try evalExpr(for_expr.body, &scoped_env);
+                }
+            }
+
+            return Value{ .unit = {} };
+        },
+        .match_expr => |match_expr| {
+            const match_value = try evalExpr(match_expr.expr, env);
+
+            // Try each arm until one matches
+            for (match_expr.arms) |arm| {
+                const matches = try matchPattern(arm.pattern, match_value);
+                if (matches) {
+                    // Create scoped environment for pattern variables
+                    var scoped_env = Environment.initScoped(env.allocator, env);
+                    defer scoped_env.deinit();
+
+                    // Bind pattern variables if needed
+                    if (arm.pattern == .variable) {
+                        try scoped_env.setLocal(arm.pattern.variable, match_value);
+                    }
+
+                    return try evalExpr(arm.body, &scoped_env);
+                }
+            }
+
+            // No pattern matched - this should be caught by type checker
+            std.debug.print("No pattern matched in match expression\n", .{});
+            return error.TypeError;
+        },
         .assignment => |assign| {
             const value = try evalExpr(assign.value, env);
             try env.set(assign.name, value);
+            return Value{ .unit = {} };
+        },
+        .field_assignment => |assign| {
+            const object_value = try evalExpr(assign.object, env);
+            const new_value = try evalExpr(assign.value, env);
+
+            if (object_value != .struct_instance) {
+                std.debug.print("Cannot assign field on non-struct value\n", .{});
+                return error.TypeError;
+            }
+
+            // Note: This modifies the struct in place, which works because
+            // struct_instance contains a HashMap that we can mutate
+            var fields = object_value.struct_instance.fields;
+            try fields.put(assign.field_name, new_value);
+            return Value{ .unit = {} };
+        },
+        .array_assignment => |assign| {
+            const array_value = try evalExpr(assign.array, env);
+            const index_value = try evalExpr(assign.index, env);
+            const new_value = try evalExpr(assign.value, env);
+
+            if (array_value != .array) {
+                std.debug.print("Cannot index non-array value\n", .{});
+                return error.TypeError;
+            }
+
+            if (index_value != .int) {
+                std.debug.print("Array index must be an integer\n", .{});
+                return error.TypeError;
+            }
+
+            const index: usize = @intCast(index_value.int);
+            if (index >= array_value.array.len) {
+                return error.IndexOutOfBounds;
+            }
+
+            // Modify the array element
+            array_value.array[index] = new_value;
             return Value{ .unit = {} };
         },
         .fn_call => |call| {
@@ -648,6 +747,38 @@ pub fn evalExpr(expr: *const Expr, env: *Environment) error{ UndefinedVariable, 
 }
 
 // ============================================================================
+// Pattern Matching Helper
+// ============================================================================
+
+fn matchPattern(pattern: Expr.Pattern, value: Value) !bool {
+    switch (pattern) {
+        .wildcard => return true, // _ matches everything
+        .variable => return true, // Variable binding matches everything
+        .literal => |lit| {
+            // Check if literal matches value
+            return switch (lit) {
+                .int => |i| value == .int and value.int == i,
+                .float => |f| value == .float and value.float == f,
+                .string => |s| value == .string and std.mem.eql(u8, value.string, s),
+                .bool => |b| value == .bool and value.bool == b,
+                .null_value => value == .null_value,
+                .unit => value == .unit,
+                else => false,
+            };
+        },
+        .range => |range| {
+            if (value != .int) return false;
+            const v = value.int;
+            if (range.inclusive) {
+                return v >= range.start and v <= range.end;
+            } else {
+                return v >= range.start and v < range.end;
+            }
+        },
+    }
+}
+
+// ============================================================================
 // Builtin Functions
 // ============================================================================
 
@@ -828,6 +959,155 @@ fn builtin_float_to_str(allocator: std.mem.Allocator, args: []Value) !Value {
     return Value{ .string = result };
 }
 
+// Get array length
+fn builtin_array_len(allocator: std.mem.Allocator, args: []Value) !Value {
+    _ = allocator;
+    if (args.len != 1) return error.InvalidArguments;
+    if (args[0] != .array) return error.TypeError;
+
+    const len: i64 = @intCast(args[0].array.len);
+    return Value{ .int = len };
+}
+
+// Push element to array (returns new array)
+fn builtin_array_push(allocator: std.mem.Allocator, args: []Value) !Value {
+    if (args.len != 2) return error.InvalidArguments;
+    if (args[0] != .array) return error.TypeError;
+
+    const old_array = args[0].array;
+    var new_array = try allocator.alloc(Value, old_array.len + 1);
+    @memcpy(new_array[0..old_array.len], old_array);
+    new_array[old_array.len] = args[1];
+
+    return Value{ .array = new_array };
+}
+
+// Pop element from array (returns [new_array, popped_value])
+fn builtin_array_pop(allocator: std.mem.Allocator, args: []Value) !Value {
+    if (args.len != 1) return error.InvalidArguments;
+    if (args[0] != .array) return error.TypeError;
+
+    const old_array = args[0].array;
+    if (old_array.len == 0) return error.IndexOutOfBounds;
+
+    const new_array = try allocator.alloc(Value, old_array.len - 1);
+    @memcpy(new_array, old_array[0 .. old_array.len - 1]);
+
+    // Return array with [new_array, popped_element]
+    var result = try allocator.alloc(Value, 2);
+    result[0] = Value{ .array = new_array };
+    result[1] = old_array[old_array.len - 1];
+
+    return Value{ .array = result };
+}
+
+// Array slice
+fn builtin_array_slice(allocator: std.mem.Allocator, args: []Value) !Value {
+    if (args.len != 3) return error.InvalidArguments;
+    if (args[0] != .array or args[1] != .int or args[2] != .int) return error.TypeError;
+
+    const arr = args[0].array;
+    const start: usize = @intCast(args[1].int);
+    const end: usize = @intCast(args[2].int);
+
+    if (start > arr.len or end > arr.len or start > end) {
+        return error.IndexOutOfBounds;
+    }
+
+    const slice = try allocator.alloc(Value, end - start);
+    @memcpy(slice, arr[start..end]);
+
+    return Value{ .array = slice };
+}
+
+// String split
+fn builtin_str_split(allocator: std.mem.Allocator, args: []Value) !Value {
+    if (args.len != 2) return error.InvalidArguments;
+    if (args[0] != .string or args[1] != .string) return error.TypeError;
+
+    const str = args[0].string;
+    const delimiter = args[1].string;
+
+    var parts = std.ArrayList(Value).initCapacity(allocator, 4) catch unreachable;
+    defer parts.deinit(allocator);
+
+    var it = std.mem.splitSequence(u8, str, delimiter);
+    while (it.next()) |part| {
+        try parts.append(allocator, Value{ .string = part });
+    }
+
+    return Value{ .array = try parts.toOwnedSlice(allocator) };
+}
+
+// String trim
+fn builtin_str_trim(allocator: std.mem.Allocator, args: []Value) !Value {
+    _ = allocator;
+    if (args.len != 1) return error.InvalidArguments;
+    if (args[0] != .string) return error.TypeError;
+
+    const trimmed = std.mem.trim(u8, args[0].string, &std.ascii.whitespace);
+    return Value{ .string = trimmed };
+}
+
+// String contains
+fn builtin_str_contains(allocator: std.mem.Allocator, args: []Value) !Value {
+    _ = allocator;
+    if (args.len != 2) return error.InvalidArguments;
+    if (args[0] != .string or args[1] != .string) return error.TypeError;
+
+    const contains = std.mem.indexOf(u8, args[0].string, args[1].string) != null;
+    return Value{ .bool = contains };
+}
+
+// String to int conversion
+fn builtin_str_to_int(allocator: std.mem.Allocator, args: []Value) !Value {
+    _ = allocator;
+    if (args.len != 1) return error.InvalidArguments;
+    if (args[0] != .string) return error.TypeError;
+
+    const value = std.fmt.parseInt(i64, args[0].string, 10) catch return error.TypeError;
+    return Value{ .int = value };
+}
+
+// String to float conversion
+fn builtin_str_to_float(allocator: std.mem.Allocator, args: []Value) !Value {
+    _ = allocator;
+    if (args.len != 1) return error.InvalidArguments;
+    if (args[0] != .string) return error.TypeError;
+
+    const value = std.fmt.parseFloat(f64, args[0].string) catch return error.TypeError;
+    return Value{ .float = value };
+}
+
+// Bool to string conversion
+fn builtin_bool_to_str(_: std.mem.Allocator, args: []Value) !Value {
+    if (args.len != 1) return error.InvalidArguments;
+    if (args[0] != .bool) return error.TypeError;
+
+    const result = if (args[0].bool) "true" else "false";
+    return Value{ .string = result };
+}
+
+// Int to float conversion
+fn builtin_int_to_float(allocator: std.mem.Allocator, args: []Value) !Value {
+    _ = allocator;
+    if (args.len != 1) return error.InvalidArguments;
+    if (args[0] != .int) return error.TypeError;
+
+    const value: f64 = @floatFromInt(args[0].int);
+    return Value{ .float = value };
+}
+
+// Float to int conversion (truncate)
+fn builtin_float_to_int(allocator: std.mem.Allocator, args: []Value) !Value {
+    _ = allocator;
+    if (args.len != 1) return error.InvalidArguments;
+    if (args[0] != .float) return error.TypeError;
+
+    const value: i64 = @intFromFloat(args[0].float);
+    return Value{ .int = value };
+}
+
 // Register all builtin functions
 pub fn registerBuiltins(env: *Environment) !void {
     try env.setBuiltin("print", builtin_print);
@@ -835,6 +1115,11 @@ pub fn registerBuiltins(env: *Environment) !void {
     try env.setBuiltin("str_len", builtin_str_len);
     try env.setBuiltin("str_concat", builtin_str_concat);
     try env.setBuiltin("str_substring", builtin_str_substring);
+    try env.setBuiltin("str_split", builtin_str_split);
+    try env.setBuiltin("str_trim", builtin_str_trim);
+    try env.setBuiltin("str_contains", builtin_str_contains);
+    try env.setBuiltin("str_to_int", builtin_str_to_int);
+    try env.setBuiltin("str_to_float", builtin_str_to_float);
     try env.setBuiltin("abs", builtin_abs);
     try env.setBuiltin("min", builtin_min);
     try env.setBuiltin("max", builtin_max);
@@ -843,4 +1128,11 @@ pub fn registerBuiltins(env: *Environment) !void {
     try env.setBuiltin("ceil", builtin_ceil);
     try env.setBuiltin("int_to_str", builtin_int_to_str);
     try env.setBuiltin("float_to_str", builtin_float_to_str);
+    try env.setBuiltin("bool_to_str", builtin_bool_to_str);
+    try env.setBuiltin("int_to_float", builtin_int_to_float);
+    try env.setBuiltin("float_to_int", builtin_float_to_int);
+    try env.setBuiltin("array_len", builtin_array_len);
+    try env.setBuiltin("array_push", builtin_array_push);
+    try env.setBuiltin("array_pop", builtin_array_pop);
+    try env.setBuiltin("array_slice", builtin_array_slice);
 }

@@ -133,7 +133,9 @@ pub const Program = struct {
         for (self.modules) |module| {
             allocator.free(module.name);
             allocator.free(module.path);
-            allocator.free(module.exports);
+            if (module.exports.len != 0) {
+                allocator.free(module.exports);
+            }
         }
         allocator.free(self.modules);
     }
@@ -146,14 +148,16 @@ pub const Builder = struct {
     string_pool: std.StringHashMap(usize),
     string_list: std.ArrayList([]const u8),
     label_counter: usize,
+    struct_fields: std.StringHashMap(std.StringHashMap(usize)), // struct_name -> (field_name -> index)
 
     pub fn init(allocator: std.mem.Allocator) Builder {
         return .{
             .allocator = allocator,
-            .instructions = std.ArrayList(Instruction).initCapacity(allocator, 0) catch @panic("OOM"),
+            .instructions = std.ArrayList(Instruction).initCapacity(allocator, 0) catch unreachable,
             .string_pool = std.StringHashMap(usize).init(allocator),
-            .string_list = std.ArrayList([]const u8).initCapacity(allocator, 0) catch @panic("OOM"),
+            .string_list = std.ArrayList([]const u8).initCapacity(allocator, 0) catch unreachable,
             .label_counter = 0,
+            .struct_fields = std.StringHashMap(std.StringHashMap(usize)).init(allocator),
         };
     }
 
@@ -161,6 +165,14 @@ pub const Builder = struct {
         self.instructions.deinit(self.allocator);
         self.string_pool.deinit();
         self.string_list.deinit(self.allocator);
+
+        // Clean up struct_fields
+        var iter = self.struct_fields.iterator();
+        while (iter.next()) |entry| {
+            var field_map = entry.value_ptr.*;
+            field_map.deinit();
+        }
+        self.struct_fields.deinit();
     }
 
     /// Add an instruction
@@ -194,6 +206,26 @@ pub const Builder = struct {
         try self.string_list.append(self.allocator, owned);
         try self.string_pool.put(owned, index);
         return index;
+    }
+
+    /// Register a struct type with its field ordering
+    pub fn registerStructType(self: *Builder, struct_name: []const u8, field_names: []const []const u8) !void {
+        var field_map = std.StringHashMap(usize).init(self.allocator);
+        for (field_names, 0..) |field_name, idx| {
+            try field_map.put(field_name, idx);
+        }
+        try self.struct_fields.put(struct_name, field_map);
+    }
+
+    /// Get field index for a struct type
+    pub fn getFieldIndex(self: *Builder, struct_name: []const u8, field_name: []const u8) !usize {
+        if (self.struct_fields.get(struct_name)) |field_map| {
+            if (field_map.get(field_name)) |idx| {
+                return idx;
+            }
+        }
+        // Fallback to global string interning (for compatibility)
+        return try self.internString(field_name);
     }
 
     /// Get current instruction position (for labels)

@@ -4,6 +4,7 @@ const Token = @import("lexer.zig").Token;
 const Expr = @import("ast.zig").Expr;
 const Stmt = @import("ast.zig").Stmt;
 const Type = @import("ast.zig").Type;
+const Value = @import("ast.zig").Value;
 const ErrorReporter = @import("../utils/error_reporter.zig").ErrorReporter;
 
 pub const Parser = struct {
@@ -130,9 +131,9 @@ pub const Parser = struct {
         // Expression statement
         const expr = try self.parseExpr();
 
-        // Semicolons are optional after block expressions (if, while, blocks)
+        // Semicolons are optional after block expressions (if, while, for, match, blocks)
         const needs_semicolon = switch (expr.*) {
-            .if_expr, .while_expr, .block => false,
+            .if_expr, .while_expr, .for_expr, .match_expr, .block => false,
             else => true,
         };
 
@@ -1303,6 +1304,12 @@ pub const Parser = struct {
             .while_kw => {
                 return try self.parseWhile();
             },
+            .for_kw => {
+                return try self.parseFor();
+            },
+            .match_kw => {
+                return try self.parseMatch();
+            },
             else => {
                 std.debug.print("Unexpected token in primary: {s}\n", .{@tagName(self.current.tag)});
                 return error.UnexpectedToken;
@@ -1398,5 +1405,219 @@ pub const Parser = struct {
             },
         };
         return expr;
+    }
+
+    fn parseFor(self: *Parser) error{ UnexpectedToken, OutOfMemory, InvalidCharacter, Overflow }!*Expr {
+        try self.expect(.for_kw);
+
+        // Expect opening parenthesis
+        try self.expect(.lparen);
+
+        // Parse iterator variable
+        if (self.current.tag != .identifier) {
+            self.error_reporter.reportTokenError(
+                "error",
+                "Expected iterator variable name after 'for ('",
+                self.current,
+            );
+            return error.UnexpectedToken;
+        }
+        const iterator = self.source[self.current.loc.start..self.current.loc.end];
+        self.advance();
+
+        // Expect 'in'
+        try self.expect(.in_kw);
+
+        // Parse iterable - must be a simple identifier or expression without struct init
+        // To keep it simple, we only support variables and array accesses for now
+        if (self.current.tag != .identifier) {
+            self.error_reporter.reportTokenError(
+                "error",
+                "Expected iterable expression after 'in'",
+                self.current,
+            );
+            return error.UnexpectedToken;
+        }
+
+        const iterable_name = self.source[self.current.loc.start..self.current.loc.end];
+        self.advance();
+
+        const iterable_expr = try self.allocator.create(Expr);
+        iterable_expr.* = .{ .variable = iterable_name };
+
+        const iterable = iterable_expr;
+
+        // Expect closing parenthesis
+        try self.expect(.rparen);
+
+        // Check if it's a range (we need to detect .. in the expression)
+        // For now, we'll mark it as range if the iterable is a binary expression with ..
+        // This is a simplified approach - a better implementation would handle ranges specially
+        const is_range = false; // TODO: Detect range expressions properly
+
+        // Parse body
+        const body = try self.parseBlock();
+
+        const expr = try self.allocator.create(Expr);
+        expr.* = .{
+            .for_expr = .{
+                .iterator = iterator,
+                .iterable = iterable,
+                .body = body,
+                .is_range = is_range,
+            },
+        };
+        return expr;
+    }
+
+    fn parseMatch(self: *Parser) error{ UnexpectedToken, OutOfMemory, InvalidCharacter, Overflow }!*Expr {
+        try self.expect(.match_kw);
+
+        // Expect opening parenthesis
+        try self.expect(.lparen);
+
+        // Parse expression to match - must be simple to avoid consuming the block
+        // For simplicity, only support variables for now
+        if (self.current.tag != .identifier) {
+            self.error_reporter.reportTokenError(
+                "error",
+                "Expected variable to match",
+                self.current,
+            );
+            return error.UnexpectedToken;
+        }
+
+        const match_var = self.source[self.current.loc.start..self.current.loc.end];
+        self.advance();
+
+        const match_expr_ptr = try self.allocator.create(Expr);
+        match_expr_ptr.* = .{ .variable = match_var };
+
+        // Expect closing parenthesis
+        try self.expect(.rparen);
+
+        // Expect '{'
+        try self.expect(.lbrace);
+
+        // Parse match arms
+        var arms = try std.ArrayList(Expr.MatchArm).initCapacity(self.allocator, 4);
+        defer arms.deinit(self.allocator);
+
+        while (self.current.tag != .rbrace) {
+            // Parse pattern
+            const pattern = try self.parsePattern();
+
+            // Expect '=>'
+            try self.expect(.fat_arrow);
+
+            // Parse arm body expression
+            const arm_body = try self.parseExpr();
+
+            try arms.append(self.allocator, .{
+                .pattern = pattern,
+                .body = arm_body,
+            });
+
+            // Optional comma between arms
+            if (self.current.tag == .comma) {
+                self.advance();
+            } else if (self.current.tag != .rbrace) {
+                self.error_reporter.reportTokenError(
+                    "error",
+                    "Expected ',' or '}' after match arm",
+                    self.current,
+                );
+                return error.UnexpectedToken;
+            }
+        }
+
+        try self.expect(.rbrace);
+
+        const expr = try self.allocator.create(Expr);
+        expr.* = .{
+            .match_expr = .{
+                .expr = match_expr_ptr,
+                .arms = try arms.toOwnedSlice(self.allocator),
+            },
+        };
+        return expr;
+    }
+
+    fn parsePattern(self: *Parser) error{ UnexpectedToken, OutOfMemory, InvalidCharacter, Overflow }!Expr.Pattern {
+        // Wildcard pattern: _
+        if (self.current.tag == .identifier) {
+            const text = self.source[self.current.loc.start..self.current.loc.end];
+            if (std.mem.eql(u8, text, "_")) {
+                self.advance();
+                return Expr.Pattern{ .wildcard = {} };
+            }
+
+            // Variable pattern: captures value
+            const var_name = text;
+            self.advance();
+            return Expr.Pattern{ .variable = var_name };
+        }
+
+        // Literal patterns
+        if (self.current.tag == .number) {
+            const num_str = self.source[self.current.loc.start..self.current.loc.end];
+            const value = try std.fmt.parseInt(i64, num_str, 10);
+            self.advance();
+
+            // Check for range pattern: 1..10 or 1..=10
+            if (self.current.tag == .dot_dot) {
+                self.advance();
+                const inclusive = false; // TODO: Support ..= for inclusive ranges
+
+                if (self.current.tag != .number) {
+                    self.error_reporter.reportTokenError(
+                        "error",
+                        "Expected number after '..' in range pattern",
+                        self.current,
+                    );
+                    return error.UnexpectedToken;
+                }
+
+                const end_str = self.source[self.current.loc.start..self.current.loc.end];
+                const end_value = try std.fmt.parseInt(i64, end_str, 10);
+                self.advance();
+
+                return Expr.Pattern{ .range = .{
+                    .start = value,
+                    .end = end_value,
+                    .inclusive = inclusive,
+                } };
+            }
+
+            return Expr.Pattern{ .literal = Value{ .int = value } };
+        }
+
+        if (self.current.tag == .string) {
+            const str_val = self.source[self.current.loc.start + 1 .. self.current.loc.end - 1];
+            self.advance();
+            return Expr.Pattern{ .literal = Value{ .string = str_val } };
+        }
+
+        if (self.current.tag == .true_kw) {
+            self.advance();
+            return Expr.Pattern{ .literal = Value{ .bool = true } };
+        }
+
+        if (self.current.tag == .false_kw) {
+            self.advance();
+            return Expr.Pattern{ .literal = Value{ .bool = false } };
+        }
+
+        if (self.current.tag == .null_kw) {
+            self.advance();
+            return Expr.Pattern{ .literal = Value{ .null_value = {} } };
+        }
+
+        self.error_reporter.reportTokenError(
+            "error",
+            "Expected pattern (literal, variable, or '_')",
+            self.current,
+        );
+        return error.UnexpectedToken;
     }
 };

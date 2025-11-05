@@ -104,7 +104,11 @@ pub const Expr = union(enum) {
     block: Block,
     if_expr: If,
     while_expr: While,
+    for_expr: For,
+    match_expr: Match,
     assignment: Assignment,
+    field_assignment: FieldAssignment,
+    array_assignment: ArrayAssignment,
     fn_call: FnCall,
     struct_init: StructInit,
     field_access: FieldAccess,
@@ -112,6 +116,48 @@ pub const Expr = union(enum) {
     array_literal: ArrayLiteral,
     array_access: ArrayAccess,
     is_check: IsCheck,
+
+    pub const For = struct {
+        iterator: []const u8, // Variable name for iterator
+        iterable: *Expr, // Expression to iterate over (array or range)
+        body: *Expr, // Loop body
+        is_range: bool, // true if iterating over range (start..end)
+    };
+
+    pub const Match = struct {
+        expr: *Expr, // Expression to match against
+        arms: []MatchArm, // Match arms
+    };
+
+    pub const MatchArm = struct {
+        pattern: Pattern, // Pattern to match
+        body: *Expr, // Expression to evaluate if pattern matches
+    };
+
+    pub const Pattern = union(enum) {
+        literal: Value, // Literal value (int, string, bool, etc.)
+        variable: []const u8, // Variable binding (catches anything)
+        wildcard: void, // _ pattern (catches anything without binding)
+        range: Range, // Range pattern like 1..10
+    };
+
+    pub const Range = struct {
+        start: i64,
+        end: i64,
+        inclusive: bool, // true for ..=, false for ..
+    };
+
+    pub const FieldAssignment = struct {
+        object: *Expr, // Object to assign to
+        field_name: []const u8, // Field name
+        value: *Expr, // Value to assign
+    };
+
+    pub const ArrayAssignment = struct {
+        array: *Expr, // Array to assign to
+        index: *Expr, // Index expression
+        value: *Expr, // Value to assign
+    };
 
     pub const IsCheck = struct {
         expr: *Expr,

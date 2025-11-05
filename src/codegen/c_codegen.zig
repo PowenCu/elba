@@ -21,6 +21,48 @@ pub const CCodeGen = struct {
     uses_floats: bool,
     used_builtins: std.StringHashMap(bool),
 
+    const BuiltinFunction = enum {
+        println,
+        print,
+        str_len,
+        str_concat,
+        str_substring,
+        int_to_str,
+        float_to_str,
+        abs,
+        sqrt,
+        floor,
+        ceil,
+        min,
+        max,
+
+        pub fn fromName(name: []const u8) ?BuiltinFunction {
+            const map = std.StaticStringMap(BuiltinFunction).initComptime(.{
+                .{ "println", .println },
+                .{ "print", .print },
+                .{ "str_len", .str_len },
+                .{ "str_concat", .str_concat },
+                .{ "str_substring", .str_substring },
+                .{ "int_to_str", .int_to_str },
+                .{ "float_to_str", .float_to_str },
+                .{ "abs", .abs },
+                .{ "sqrt", .sqrt },
+                .{ "floor", .floor },
+                .{ "ceil", .ceil },
+                .{ "min", .min },
+                .{ "max", .max },
+            });
+            return map.get(name);
+        }
+
+        pub fn usesStrings(self: BuiltinFunction) bool {
+            return switch (self) {
+                .println, .print, .str_len, .str_concat, .str_substring, .int_to_str, .float_to_str => true,
+                else => false,
+            };
+        }
+    };
+
     pub fn init(allocator: std.mem.Allocator) !CCodeGen {
         return .{
             .allocator = allocator,
@@ -91,24 +133,10 @@ pub const CCodeGen = struct {
                     .struct_new, .field_get, .field_set => self.uses_structs = true,
                     .call => {
                         if (inst.string_data) |func_name| {
-                            // Track which builtins are used
-                            const is_builtin = std.mem.eql(u8, func_name, "println") or
-                                std.mem.eql(u8, func_name, "print") or
-                                std.mem.eql(u8, func_name, "str_len") or
-                                std.mem.eql(u8, func_name, "str_concat") or
-                                std.mem.eql(u8, func_name, "str_substring") or
-                                std.mem.eql(u8, func_name, "int_to_str") or
-                                std.mem.eql(u8, func_name, "float_to_str") or
-                                std.mem.eql(u8, func_name, "abs") or
-                                std.mem.eql(u8, func_name, "sqrt") or
-                                std.mem.eql(u8, func_name, "floor") or
-                                std.mem.eql(u8, func_name, "ceil") or
-                                std.mem.eql(u8, func_name, "min") or
-                                std.mem.eql(u8, func_name, "max");
-
-                            if (is_builtin) {
+                            // Check if this is a builtin function
+                            if (BuiltinFunction.fromName(func_name)) |builtin| {
                                 try self.used_builtins.put(func_name, true);
-                                if (std.mem.indexOf(u8, func_name, "str") != null) {
+                                if (builtin.usesStrings()) {
                                     self.uses_strings = true;
                                 }
                             }

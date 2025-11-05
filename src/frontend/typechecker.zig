@@ -1391,6 +1391,143 @@ pub fn inferExpr(expr: *const Expr, env: *TypeEnvironment) error{ TypeError, Und
 
             return .bool;
         },
+        .for_expr => |for_expr| {
+            // Infer the type of the iterable
+            const iterable_type = try inferExpr(for_expr.iterable, env);
+
+            // Create scoped environment for loop variable
+            var scoped_env = TypeEnvironment.initScoped(env.allocator, env);
+            defer scoped_env.deinit();
+
+            if (for_expr.is_range) {
+                // Range-based for loop expects int iterable
+                if (iterable_type != .int) {
+                    std.debug.print("Type error: Range for loop requires int range\n", .{});
+                    return error.TypeError;
+                }
+                // Iterator variable is int
+                try scoped_env.set(for_expr.iterator, .{ .typ = .int, .mutable = false });
+            } else {
+                // Array-based for loop expects array type
+                if (iterable_type != .array) {
+                    std.debug.print("Type error: For loop requires array type\n", .{});
+                    return error.TypeError;
+                }
+                // Iterator variable has element type
+                const elem_type = iterable_type.array.*;
+                try scoped_env.set(for_expr.iterator, .{ .typ = elem_type, .mutable = false });
+            }
+
+            // Check body
+            _ = try inferExpr(for_expr.body, &scoped_env);
+
+            // For loops return unit
+            return .unit;
+        },
+        .match_expr => |match_expr| {
+            // Infer type of expression being matched
+            const match_type = try inferExpr(match_expr.expr, env);
+
+            // All arms must return the same type
+            if (match_expr.arms.len == 0) {
+                std.debug.print("Type error: Match expression must have at least one arm\n", .{});
+                return error.TypeError;
+            }
+
+            // Infer type from first arm
+            const first_arm = match_expr.arms[0];
+            var scoped_env = TypeEnvironment.initScoped(env.allocator, env);
+            defer scoped_env.deinit();
+
+            // Bind pattern variable if needed
+            if (first_arm.pattern == .variable) {
+                try scoped_env.set(first_arm.pattern.variable, .{ .typ = match_type, .mutable = false });
+            }
+
+            const expected_type = try inferExpr(first_arm.body, &scoped_env);
+
+            // Check all other arms return compatible type
+            for (match_expr.arms[1..]) |arm| {
+                var arm_env = TypeEnvironment.initScoped(env.allocator, env);
+                defer arm_env.deinit();
+
+                if (arm.pattern == .variable) {
+                    try arm_env.set(arm.pattern.variable, .{ .typ = match_type, .mutable = false });
+                }
+
+                const arm_type = try inferExpr(arm.body, &arm_env);
+                if (!isTypeCompatible(arm_type, expected_type)) {
+                    var buf1: [256]u8 = undefined;
+                    var buf2: [256]u8 = undefined;
+                    std.debug.print("Type error: Match arms must return same type, got '{s}' and '{s}'\n", .{ typeToString(expected_type, &buf1), typeToString(arm_type, &buf2) });
+                    return error.TypeError;
+                }
+            }
+
+            return expected_type;
+        },
+        .field_assignment => |assign| {
+            // Check object type
+            const object_type = try inferExpr(assign.object, env);
+
+            // Must be a struct type
+            if (object_type != .user_type) {
+                std.debug.print("Type error: Cannot access field on non-struct type\n", .{});
+                return error.TypeError;
+            }
+
+            // Check value type matches field type
+            const value_type = try inferExpr(assign.value, env);
+
+            // Look up struct to validate field exists
+            const struct_def = env.getStruct(object_type.user_type);
+            if (struct_def) |def| {
+                // Check if field exists
+                const field_type = def.fields.get(assign.field_name);
+                if (field_type) |expected_type| {
+                    if (!isTypeCompatible(value_type, expected_type)) {
+                        var buf1: [256]u8 = undefined;
+                        var buf2: [256]u8 = undefined;
+                        std.debug.print("Type error: Field '{s}' expects '{s}' but got '{s}'\n", .{ assign.field_name, typeToString(expected_type, &buf1), typeToString(value_type, &buf2) });
+                        return error.TypeError;
+                    }
+                } else {
+                    std.debug.print("Type error: Struct '{s}' has no field '{s}'\n", .{ object_type.user_type, assign.field_name });
+                    return error.TypeError;
+                }
+            }
+
+            // Field assignment returns unit
+            return .unit;
+        },
+        .array_assignment => |assign| {
+            // Check array type
+            const array_type = try inferExpr(assign.array, env);
+            if (array_type != .array) {
+                std.debug.print("Type error: Cannot index non-array type\n", .{});
+                return error.TypeError;
+            }
+
+            // Check index is int
+            const index_type = try inferExpr(assign.index, env);
+            if (index_type != .int) {
+                std.debug.print("Type error: Array index must be int\n", .{});
+                return error.TypeError;
+            }
+
+            // Check value type matches element type
+            const elem_type = array_type.array.*;
+            const value_type = try inferExpr(assign.value, env);
+            if (!isTypeCompatible(value_type, elem_type)) {
+                var buf1: [256]u8 = undefined;
+                var buf2: [256]u8 = undefined;
+                std.debug.print("Type error: Array element expects '{s}' but got '{s}'\n", .{ typeToString(elem_type, &buf1), typeToString(value_type, &buf2) });
+                return error.TypeError;
+            }
+
+            // Array assignment returns unit
+            return .unit;
+        },
     }
 }
 
@@ -1506,5 +1643,109 @@ pub fn registerBuiltins(env: *TypeEnvironment) !void {
         param_types[0] = .float;
         try env.allocated_slices.append(allocator, param_types);
         try env.setFn("float_to_str", .{ .param_types = param_types, .return_type = .string });
+    }
+
+    // array_len(arr: []T) -> int
+    {
+        var param_types = try allocator.alloc(Type, 1);
+        param_types[0] = .unknown; // Accept any array type
+        try env.allocated_slices.append(allocator, param_types);
+        try env.setFn("array_len", .{ .param_types = param_types, .return_type = .int });
+    }
+
+    // array_push(arr: []T, elem: T) -> []T
+    {
+        var param_types = try allocator.alloc(Type, 2);
+        param_types[0] = .unknown;
+        param_types[1] = .unknown;
+        try env.allocated_slices.append(allocator, param_types);
+        try env.setFn("array_push", .{ .param_types = param_types, .return_type = .unknown });
+    }
+
+    // array_pop(arr: []T) -> []T
+    {
+        var param_types = try allocator.alloc(Type, 1);
+        param_types[0] = .unknown;
+        try env.allocated_slices.append(allocator, param_types);
+        try env.setFn("array_pop", .{ .param_types = param_types, .return_type = .unknown });
+    }
+
+    // array_slice(arr: []T, start: int, end: int) -> []T
+    {
+        var param_types = try allocator.alloc(Type, 3);
+        param_types[0] = .unknown;
+        param_types[1] = .int;
+        param_types[2] = .int;
+        try env.allocated_slices.append(allocator, param_types);
+        try env.setFn("array_slice", .{ .param_types = param_types, .return_type = .unknown });
+    }
+
+    // str_split(s: str, delimiter: str) -> []str
+    {
+        var param_types = try allocator.alloc(Type, 2);
+        param_types[0] = .string;
+        param_types[1] = .string;
+        try env.allocated_slices.append(allocator, param_types);
+        const elem_type_ptr = try allocator.create(Type);
+        elem_type_ptr.* = .string;
+        try env.allocated_types.append(allocator, elem_type_ptr);
+        try env.setFn("str_split", .{ .param_types = param_types, .return_type = Type{ .array = elem_type_ptr } });
+    }
+
+    // str_trim(s: str) -> str
+    {
+        var param_types = try allocator.alloc(Type, 1);
+        param_types[0] = .string;
+        try env.allocated_slices.append(allocator, param_types);
+        try env.setFn("str_trim", .{ .param_types = param_types, .return_type = .string });
+    }
+
+    // str_contains(s: str, substring: str) -> bool
+    {
+        var param_types = try allocator.alloc(Type, 2);
+        param_types[0] = .string;
+        param_types[1] = .string;
+        try env.allocated_slices.append(allocator, param_types);
+        try env.setFn("str_contains", .{ .param_types = param_types, .return_type = .bool });
+    }
+
+    // str_to_int(s: str) -> int
+    {
+        var param_types = try allocator.alloc(Type, 1);
+        param_types[0] = .string;
+        try env.allocated_slices.append(allocator, param_types);
+        try env.setFn("str_to_int", .{ .param_types = param_types, .return_type = .int });
+    }
+
+    // str_to_float(s: str) -> float
+    {
+        var param_types = try allocator.alloc(Type, 1);
+        param_types[0] = .string;
+        try env.allocated_slices.append(allocator, param_types);
+        try env.setFn("str_to_float", .{ .param_types = param_types, .return_type = .float });
+    }
+
+    // bool_to_str(b: bool) -> str
+    {
+        var param_types = try allocator.alloc(Type, 1);
+        param_types[0] = .bool;
+        try env.allocated_slices.append(allocator, param_types);
+        try env.setFn("bool_to_str", .{ .param_types = param_types, .return_type = .string });
+    }
+
+    // int_to_float(x: int) -> float
+    {
+        var param_types = try allocator.alloc(Type, 1);
+        param_types[0] = .int;
+        try env.allocated_slices.append(allocator, param_types);
+        try env.setFn("int_to_float", .{ .param_types = param_types, .return_type = .float });
+    }
+
+    // float_to_int(x: float) -> int
+    {
+        var param_types = try allocator.alloc(Type, 1);
+        param_types[0] = .float;
+        try env.allocated_slices.append(allocator, param_types);
+        try env.setFn("float_to_int", .{ .param_types = param_types, .return_type = .int });
     }
 }

@@ -105,12 +105,13 @@ pub const ErrorReporter = struct {
     ) void {
         const got_text = self.source[got.loc.start..got.loc.end];
 
-        const message = std.fmt.allocPrint(
-            std.heap.page_allocator,
+        // Use a stack buffer for the error message to avoid heap allocation
+        var buf: [256]u8 = undefined;
+        const message = std.fmt.bufPrint(
+            &buf,
             "Expected {s}, but got '{s}'",
             .{ expected, got_text },
-        ) catch "Expected token not found";
-        defer std.heap.page_allocator.free(message);
+        ) catch "Expected token (message too long)";
 
         self.reportTokenError("error", message, got);
     }
