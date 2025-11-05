@@ -3,6 +3,16 @@ zig-out/
 zig-cache/
 .zig-cache/
 
+# C build artifacts
+build/
+bin/
+*.o
+*.so
+*.dylib
+*.dll
+*.exe
+*.a
+
 # OS specific
 .DS_Store
 Thumbs.db
@@ -15,13 +25,6 @@ Thumbs.db
 *~
 
 # Elba compiled output
-*.o
-*.so
-*.dylib
-*.dll
-*.exe
-
-# Test output
 test_output/
 *.log
 

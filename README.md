@@ -1,4 +1,6 @@
-﻿# 🚀 Elba Programming Language
+# 🚀 Elba Programming Language
+
+> **🔄 Migration Notice**: This project is currently being transitioned from Zig to C. The C version has foundational components (lexer, error reporter) working, with full compiler features in progress. See [C_CONVERSION.md](C_CONVERSION.md) for status and details.
 
 <div align="center">
 
@@ -68,33 +70,50 @@ Elba is a statically-typed programming language designed for clarity, performanc
 ## 🚀 Installation
 
 ### Prerequisites
+
+**C Version (In Progress):**
+- **GCC 7.0+** or **Clang 6.0+**
+- **Make** (GNU Make 3.82+)
+- (Optional) **LLVM 20** for native compilation
+
+**Zig Version (Legacy):**
 - **Zig 0.15.2** or later ([Download](https://ziglang.org/download/))
 - (Optional) **LLVM 20** for native compilation
-- (Optional) **GCC or Clang** for C code compilation
 
 ### Building from Source
 
+**C Version (Current Development):**
 ```bash
 # Clone the repository
 git clone https://github.com/yourusername/elba.git
 cd elba
 
-# Build the compiler
+# Build the C compiler
+make
+
+# Verify installation
+./bin/elba --version
+
+# Run lexer demo
+./bin/elba test
+```
+
+**Zig Version (Legacy):**
+```bash
+# Build the Zig compiler
 zig build
 
 # Verify installation
 ./zig-out/bin/elba --version
-```
 
-### Quick Test
-
-```bash
 # Run an example
 ./zig-out/bin/elba examples/hello_world.elba
 
 # Start the REPL
 ./zig-out/bin/elba repl
 ```
+
+> **Note**: The project is currently being transitioned from Zig to C. The C version has a working lexer and error reporter, but full compiler functionality (parser, typechecker, backends) is still in progress. See [C_CONVERSION.md](C_CONVERSION.md) for details.
 
 ## 🏁 Quick Start
 
