@@ -4,7 +4,7 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -std=c11 -g -O2
 LDFLAGS = 
-LIBS = 
+LIBS = -lm 
 
 # LLVM configuration (optional)
 LLVM_CONFIG = llvm-config
@@ -26,6 +26,7 @@ C_SOURCES = \
 	$(SRC_DIR)/frontend/ast.c \
 	$(SRC_DIR)/frontend/parser.c \
 	$(SRC_DIR)/frontend/typechecker.c \
+	$(SRC_DIR)/backend/interpreter.c \
 	$(SRC_DIR)/utils/error_reporter.c 
 
 # Object files

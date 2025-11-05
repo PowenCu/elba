@@ -5,6 +5,7 @@
 #include "frontend/lexer.h"
 #include "frontend/parser.h"
 #include "frontend/typechecker.h"
+#include "backend/interpreter.h"
 #include "utils/error_reporter.h"
 
 // Helper to print expression type
@@ -97,21 +98,24 @@ int main(int argc, char** argv) {
     }
     
     if (strcmp(argv[1], "--test") == 0) {
-        // Test parser and typechecker with sample code
+        // Test parser, typechecker, and interpreter with sample code
         const char* test_source = 
             "const x = 42;\n"
-            "let y: float = 3.14;\n"
+            "let y = 3.14;\n"
             "let z = x + 10;\n"
-            "const flag = true;\n"
-            "let name = \"Elba\";\n";
+            "const result = x * 2 + 8;\n"
+            "print(\"x =\", x);\n"
+            "print(\"y =\", y);\n"
+            "print(\"z =\", z);\n"
+            "print(\"result =\", result);\n";
         size_t source_len = strlen(test_source);
         
-        printf("Testing parser and typechecker with:\n%s\n", test_source);
+        printf("Testing full pipeline with:\n%s\n", test_source);
         printf("=== Parsing ===\n");
         
         Lexer lexer = lexer_init(test_source, source_len);
         ErrorReporter reporter = error_reporter_init(test_source, source_len, "test.elba");
-        Arena* arena = arena_create(8192);
+        Arena* arena = arena_create(16384);
         
         Parser* parser = parser_init(&lexer, test_source, source_len, &reporter, arena);
         
@@ -135,11 +139,11 @@ int main(int argc, char** argv) {
             stmt_count++;
             dyn_array_append(stmts_array, &stmt);
             
-            printf("Statement %d: ", stmt_count);
+            printf("  %d. ", stmt_count);
             
             switch (stmt->kind) {
                 case STMT_CONST_DECL:
-                    printf("CONST %.*s", 
+                    printf("const %.*s", 
                            (int)stmt->data.var_decl.name.length,
                            stmt->data.var_decl.name.data);
                     if (stmt->data.var_decl.type_annotation) {
@@ -147,12 +151,10 @@ int main(int argc, char** argv) {
                         printf(": %s", type_to_string(stmt->data.var_decl.type_annotation, 
                                                       type_buf, sizeof(type_buf)));
                     }
-                    printf(" = ");
-                    print_expr_kind(stmt->data.var_decl.value->kind);
-                    printf("\n");
+                    printf(" = ...\n");
                     break;
                 case STMT_LET_DECL:
-                    printf("LET %.*s",
+                    printf("let %.*s",
                            (int)stmt->data.var_decl.name.length,
                            stmt->data.var_decl.name.data);
                     if (stmt->data.var_decl.type_annotation) {
@@ -160,15 +162,16 @@ int main(int argc, char** argv) {
                         printf(": %s", type_to_string(stmt->data.var_decl.type_annotation,
                                                       type_buf, sizeof(type_buf)));
                     }
-                    printf(" = ");
-                    print_expr_kind(stmt->data.var_decl.value->kind);
-                    printf("\n");
-                    break;
-                case STMT_RETURN:
-                    printf("RETURN\n");
+                    printf(" = ...\n");
                     break;
                 case STMT_EXPR:
-                    printf("EXPR\n");
+                    if (stmt->data.expr_stmt->kind == EXPR_FN_CALL) {
+                        printf("call %.*s(...)\n",
+                               (int)stmt->data.expr_stmt->data.fn_call.name.length,
+                               stmt->data.expr_stmt->data.fn_call.name.data);
+                    } else {
+                        printf("expression\n");
+                    }
                     break;
                 default:
                     printf("(other statement)\n");
@@ -176,7 +179,7 @@ int main(int argc, char** argv) {
             }
         }
         
-        printf("\n=== Successfully parsed %d statements ===\n\n", stmt_count);
+        printf("\n✓ Parsed %d statements\n\n", stmt_count);
         
         // Type check
         printf("=== Type Checking ===\n");
@@ -189,25 +192,40 @@ int main(int argc, char** argv) {
         );
         
         if (tc_result.success) {
-            printf("✓ Type checking passed!\n");
-            printf("\nAll variables are properly typed:\n");
-            printf("  x: int (const)\n");
-            printf("  y: float (mutable, explicit annotation)\n");
-            printf("  z: int (mutable, inferred from x + 10)\n");
-            printf("  flag: bool (const)\n");
-            printf("  name: str (mutable)\n");
+            printf("✓ Type checking passed\n\n");
         } else {
-            printf("✗ Type checking failed: %s\n", tc_result.error_message);
+            printf("✗ Type checking failed: %s\n\n", tc_result.error_message);
+            parser_free(parser);
+            dyn_array_free(stmts_array);
+            arena_free(arena);
+            return 1;
         }
         
-        printf("\n");
+        // Interpret
+        printf("=== Execution ===\n");
+        
+        InterpResult interp_result = interp_run_program(
+            (Stmt**)stmts_array->items,
+            stmts_array->length,
+            arena
+        );
+        
+        if (!interp_result.success) {
+            fprintf(stderr, "\n✗ Runtime error: %s\n", interp_result.error_message);
+            parser_free(parser);
+            dyn_array_free(stmts_array);
+            arena_free(arena);
+            return 1;
+        }
+        
+        printf("\n✓ Program executed successfully\n");
         
         parser_free(parser);
         dyn_array_free(stmts_array);
         arena_free(arena);
         
-        printf("\nNote: Full compiler functionality (interpreter, backends) not yet implemented.\n");
-        printf("This demonstrates the C port with working lexer, parser, and typechecker.\n");
+        printf("\nNote: Full compiler functionality (IR, LLVM, C codegen) not yet implemented.\n");
+        printf("This demonstrates the C port with complete frontend and interpreter.\n");
         
         return 0;
     }
