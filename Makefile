@@ -24,6 +24,7 @@ C_SOURCES = \
 	$(SRC_DIR)/common.c \
 	$(SRC_DIR)/frontend/lexer.c \
 	$(SRC_DIR)/frontend/ast.c \
+	$(SRC_DIR)/frontend/parser.c \
 	$(SRC_DIR)/utils/error_reporter.c 
 
 # Object files
