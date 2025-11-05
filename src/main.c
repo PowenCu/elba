@@ -6,6 +6,8 @@
 #include "frontend/parser.h"
 #include "frontend/typechecker.h"
 #include "backend/interpreter.h"
+#include "backend/ir.h"
+#include "backend/ir_gen.h"
 #include "utils/error_reporter.h"
 
 // Helper to print expression type
@@ -115,7 +117,12 @@ int main(int argc, char** argv) {
         return 0;
     }
     
-    if (strcmp(argv[1], "--test") == 0) {
+    bool show_ir = false;
+    if (strcmp(argv[1], "--test") == 0 || 
+        (argc > 2 && strcmp(argv[1], "--test") == 0 && strcmp(argv[2], "--show-ir") == 0)) {
+        if (argc > 2 && strcmp(argv[2], "--show-ir") == 0) {
+            show_ir = true;
+        }
         // Test parser, typechecker, and interpreter with sample code
         const char* test_source = 
             "const x = 42;\n"
@@ -219,6 +226,29 @@ int main(int argc, char** argv) {
             return 1;
         }
         
+        // Generate IR if requested
+        if (show_ir) {
+            printf("=== IR Generation ===\n");
+            
+            IRGenerator* ir_gen = ir_gen_create(arena);
+            
+            // Generate IR for each statement
+            for (size_t i = 0; i < stmts_array->length; i++) {
+                Stmt* stmt = ((Stmt**)stmts_array->items)[i];
+                ir_gen_stmt(ir_gen, stmt);
+            }
+            
+            // Build program
+            IRProgram* ir_program = ir_gen_build_program(ir_gen);
+            
+            printf("✓ IR generation completed\n\n");
+            
+            // Print IR
+            ir_program_print(ir_program);
+            
+            ir_gen_free(ir_gen);
+        }
+        
         // Interpret
         printf("=== Execution ===\n");
         
@@ -242,8 +272,12 @@ int main(int argc, char** argv) {
         dyn_array_free(stmts_array);
         arena_free(arena);
         
-        printf("\nNote: Full compiler functionality (IR, LLVM, C codegen) not yet implemented.\n");
-        printf("This demonstrates the C port with complete frontend and interpreter.\n");
+        if (show_ir) {
+            printf("\nNote: IR system now functional. IR optimizer and interpreter coming soon.\n");
+        } else {
+            printf("\nNote: Use --test --show-ir to see generated IR code.\n");
+        }
+        printf("This demonstrates the C port with complete frontend, IR generation, and interpreter.\n");
         
         return 0;
     }

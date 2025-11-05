@@ -6,7 +6,7 @@ This document tracks the conversion of the Elba programming language compiler fr
 
 ## Progress Status
 
-### Completed (~8,000 lines converted - 73%)
+### Completed (~9,000 lines converted - 82%)
 
 **Core Compiler Pipeline - FULLY FUNCTIONAL:**
 
@@ -17,12 +17,14 @@ This document tracks the conversion of the Elba programming language compiler fr
 5. **Parser** (src/frontend/parser.c/.h) - Parse tokens into AST with precedence climbing for expressions
 6. **Typechecker** (src/frontend/typechecker.c/.h) - Type inference, type checking, type environment management
 7. **Interpreter** (src/backend/interpreter.c/.h) - Execute AST with full expression and statement evaluation
-8. **Error Reporter** (src/utils/error_reporter.c/.h) - Source error reporting with context
-9. **Main Entry Point** (src/main.c) - CLI with version/help/demo modes
+8. **IR System** (src/backend/ir.c/.h) - Intermediate representation data structures
+9. **IR Generator** (src/backend/ir_gen.c/.h) - Convert AST to IR for optimization
+10. **Error Reporter** (src/utils/error_reporter.c/.h) - Source error reporting with context
+11. **Main Entry Point** (src/main.c) - CLI with version/help/demo modes and IR visualization
 
-**Status**: The compiler is **FULLY FUNCTIONAL** and can parse, type-check, and execute Elba programs.
+**Status**: The compiler is **FULLY FUNCTIONAL** and now includes IR generation.
 
-### Pending Conversion (~3,000 lines remaining - 27%)
+### Pending Conversion (~2,000 lines remaining - 18%)
 
 **Optional Components (for production features):**
 
@@ -129,8 +131,8 @@ The following components still need to be converted from Zig to C:
 
 #### Backend Components
 - [x] **Interpreter** (1,138 lines) - AST interpreter
-- [ ] **IR** (410 lines) - Intermediate representation structures
-- [ ] **IR Generator** (601 lines) - Convert AST to IR
+- [x] **IR** (410 lines) - Intermediate representation structures
+- [x] **IR Generator** (601 lines) - Convert AST to IR
 - [ ] **IR Optimizer** (418 lines) - Optimize IR
 - [ ] **IR Interpreter** (584 lines) - Execute IR
 - [ ] **LLVM Codegen** (1,004 lines) - Generate LLVM IR

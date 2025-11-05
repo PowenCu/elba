@@ -27,6 +27,8 @@ C_SOURCES = \
 	$(SRC_DIR)/frontend/parser.c \
 	$(SRC_DIR)/frontend/typechecker.c \
 	$(SRC_DIR)/backend/interpreter.c \
+	$(SRC_DIR)/backend/ir.c \
+	$(SRC_DIR)/backend/ir_gen.c \
 	$(SRC_DIR)/utils/error_reporter.c 
 
 # Object files
