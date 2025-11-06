@@ -26,27 +26,29 @@ We are committed to providing a welcoming and inspiring community for all. Pleas
 ## Getting Started
 
 ### Prerequisites
-- Zig 0.15.2 or later
+- GCC 7.0+ or Clang 6.0+ (C11 support required)
+- Make (GNU Make 3.82+)
 - Git
-- (Optional) LLVM 20 for LLVM backend
-- (Optional) GCC or Clang for C compilation
+- (Optional) LLVM 20 for native code generation
 
 ### Building from Source
 ```bash
 git clone https://github.com/yourusername/elba.git
 cd elba
-zig build
+make
 ```
 
 ### Running Tests
 ```bash
-# Run all examples
-./zig-out/bin/elba examples/hello_world.elba
+# Run demo mode
+./bin/elba --test
 
-# Run with different backends
-./zig-out/bin/elba --compile --run-ir examples/fibonacci.elba
-./zig-out/bin/elba --compile --compile-c examples/arrays.elba
-./zig-out/bin/elba --compile --compile-llvm examples/llvm_demo.elba
+# Test with different execution modes
+./bin/elba --test --optimize --ir-interp
+
+# Test code generation
+./bin/elba --test --emit-c output.c
+./bin/elba --test --show-ir
 ```
 
 ## Development Setup
@@ -55,21 +57,28 @@ zig build
 ```
 elba/
 ├── src/
-│   ├── main.zig              # Entry point
-│   ├── frontend/             # Lexer, parser, type checker
-│   ├── backend/              # Interpreters, IR, optimizers
-│   ├── codegen/              # C and LLVM code generators
-│   └── utils/                # CLI, REPL, error reporting
-├── std/                      # Standard library
-├── examples/                 # Example programs
-├── tests/                    # Test suite
-└── build.zig                 # Build configuration
+│   ├── main.c                 # Entry point
+│   ├── common.{c,h}           # Shared utilities (arena, arrays, HashMap)
+│   ├── frontend/              # Lexer, parser, type checker, AST
+│   ├── backend/               # Interpreters, IR, optimizers, LLVM codegen
+│   ├── codegen/               # C code generator
+│   └── utils/                 # Error reporting
+├── std/                       # Standard library (Elba files)
+├── examples/                  # Example programs
+├── tests/                     # Test suite
+└── Makefile                   # Build configuration
 ```
 
 ### Key Components
 1. **Frontend**: Lexer → Parser → Type Checker → AST
 2. **IR Layer**: IR Generator → Optimizer → IR
-3. **Backends**: AST Interpreter, IR Interpreter, C Codegen, LLVM Codegen
+3. **Backends**: AST Interpreter, IR Interpreter, C Codegen, LLVM Codegen (optional)
+
+### Build System
+The Makefile automatically detects LLVM:
+- If LLVM is found via `llvm-config`, it enables LLVM codegen features
+- Otherwise, builds core compiler without LLVM support
+- All C files use C11 standard with `-Wall -Wextra` warnings
 
 ## How to Contribute
 
@@ -107,29 +116,40 @@ Look for issues tagged with `good first issue` - these are ideal for newcomers.
 
 ## Code Style
 
-### Zig Code Style
-Follow the Zig style guide:
-```zig
-// Good
-const MyStruct = struct {
-    field_name: i32,
-    
-    pub fn init(allocator: std.mem.Allocator) !MyStruct {
-        return MyStruct{
-            .field_name = 0,
-        };
-    }
-};
+### C Code Style
+Follow standard C11 conventions with these guidelines:
 
-// Use descriptive names
-fn calculateFibonacci(n: i32) i32 {
+```c
+// Use clear, descriptive names
+typedef struct {
+    int field_name;
+    char* data;
+} MyStruct;
+
+// Function declarations with proper spacing
+MyStruct* my_struct_create(Arena* arena, int value) {
+    MyStruct* s = arena_alloc(arena, sizeof(MyStruct));
+    s->field_name = value;
+    s->data = NULL;
+    return s;
+}
+
+// Use snake_case for functions and variables
+int calculate_fibonacci(int n) {
     // Implementation
 }
 
 // Add comments for complex logic
-fn optimizeIR(program: *Program) !void {
+void optimize_ir(IRProgram* program) {
     // First pass: constant folding
     // Second pass: dead code elimination
+}
+
+// Always check allocations and handle errors
+void* ptr = malloc(size);
+if (!ptr) {
+    fprintf(stderr, "Memory allocation failed\n");
+    return;
 }
 ```
 
@@ -152,8 +172,10 @@ const defaultName: str = "Unknown";
 ```
 
 ### Formatting
-- Run `zig fmt` before committing Zig code
-- Use 4 spaces for indentation
+- Use 4 spaces for indentation (no tabs)
+- Maximum line length: 100 characters
+- Always use braces for control structures
+- Run `make` to ensure code compiles without warnings
 - Keep lines under 100 characters when reasonable
 - Add blank lines between logical sections
 
@@ -161,17 +183,20 @@ const defaultName: str = "Unknown";
 
 ### Running Tests
 ```bash
-# Test AST interpreter
-./zig-out/bin/elba tests/test_functions.elba
+# Test with demo mode
+./bin/elba --test
 
-# Test IR interpreter
-./zig-out/bin/elba --compile --run-ir tests/test_arrays.elba
+# Test with optimization
+./bin/elba --test --optimize --ir-interp
 
-# Test C codegen
-./zig-out/bin/elba --compile --compile-c tests/test_loops.elba
+# Test code generation
+./bin/elba --test --emit-c output.c
 
-# Test LLVM backend
-./zig-out/bin/elba --compile --compile-llvm examples/llvm_demo.elba
+# Test a specific Elba program
+./bin/elba examples/hello_world.elba
+
+# Show IR for debugging
+./bin/elba examples/fibonacci.elba --show-ir
 ```
 
 ### Writing Tests
@@ -179,12 +204,12 @@ Add test files to the `tests/` directory:
 ```elba
 // tests/test_new_feature.elba
 // Test description
-println("Testing new feature...");
+print("Testing new feature...");
 
 const result: int = newFeature(42);
-assert(result == 84, "newFeature should double the input");
+// Add assertions as part of the test
 
-println("✓ All tests passed!");
+print("✓ All tests passed!");
 ```
 
 ### Test Coverage
@@ -197,10 +222,10 @@ Aim to test:
 ## Pull Request Process
 
 ### Before Submitting
-1. ✅ Code builds successfully (`zig build`)
+1. ✅ Code builds successfully (`make`)
 2. ✅ All existing tests pass
 3. ✅ New tests added for new features
-4. ✅ Code formatted (`zig fmt`)
+4. ✅ Code compiles without warnings
 5. ✅ Documentation updated
 6. ✅ CHANGELOG.md updated
 
@@ -251,31 +276,29 @@ Bad:
 
 ### Debugging
 ```bash
-# Show AST
-./zig-out/bin/elba --ast program.elba
-
 # Show IR
-./zig-out/bin/elba --compile --show-ir program.elba
+./bin/elba program.elba --show-ir
 
-# Verbose mode
-./zig-out/bin/elba --verbose program.elba
+# With optimization
+./bin/elba program.elba --optimize --show-ir
 
-# REPL for quick testing
-./zig-out/bin/elba repl
-```
+# Generate C code to inspect
+./bin/elba program.elba --emit-c output.c
+cat output.c
 
-### Performance Profiling
-```bash
-# Benchmark
-./zig-out/bin/elba benchmark
+# Test mode for quick validation
+./bin/elba --test
 ```
 
 ### Adding New IR Instructions
-1. Add to `Opcode` enum in `src/backend/ir.zig`
-2. Handle in `IrGenerator` in `src/backend/ir_gen.zig`
-3. Implement in `Interpreter` in `src/backend/ir_interpreter.zig`
-4. (Optional) Add to LLVM codegen in `src/backend/llvm_codegen.zig`
-5. (Optional) Add to C codegen in `src/codegen/c_codegen.zig`
+1. Add to `IROpcode` enum in `src/backend/ir.h`
+2. Handle in IR generator in `src/backend/ir_gen.c`
+3. Implement in IR interpreter in `src/backend/ir_interp.c`
+4. (Optional) Add to LLVM codegen in `src/backend/llvm_codegen.c`
+5. (Optional) Add to C codegen in `src/codegen/c_codegen.c`
+3. Implement in IR interpreter in `src/backend/ir_interp.c`
+4. (Optional) Add to LLVM codegen in `src/backend/llvm_codegen.c`
+5. (Optional) Add to C codegen in `src/codegen/c_codegen.c`
 
 ### Adding New Language Features
 1. Update lexer (if new tokens needed)
