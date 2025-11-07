@@ -31,9 +31,8 @@ Describe how you tested these changes:
 - [ ] All existing tests pass
 
 ## Checklist
-- [ ] Code builds successfully (`zig build`)
-- [ ] Code formatted (`zig fmt`)
-- [ ] No new warnings
+- [ ] Code builds successfully (`make`)
+- [ ] No compiler warnings
 - [ ] Tests pass
 - [ ] Documentation updated (if applicable)
 - [ ] CHANGELOG.md updated (if applicable)

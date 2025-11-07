@@ -1,11 +1,13 @@
-﻿# 🚀 Elba Programming Language
+# 🚀 Elba Programming Language
+
+> **✅ Complete C Implementation**: The Elba compiler is now fully implemented in C with **100% of functionality converted** from the original Zig codebase! All compiler phases (lexer, parser, typechecker, IR generation, optimization, interpretation, and code generation) are **fully operational**. See [C_CONVERSION.md](C_CONVERSION.md) for complete conversion details.
 
 <div align="center">
 
 **A modern, statically-typed programming language with multiple compilation backends**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Zig](https://img.shields.io/badge/Zig-0.15.2-orange.svg)](https://ziglang.org/)
+[![C11](https://img.shields.io/badge/C-C11-blue.svg)](https://en.cppreference.com/w/c/11)
 [![Status](https://img.shields.io/badge/Status-Alpha-yellow.svg)]()
 
 [Features](#-features) •
@@ -68,9 +70,10 @@ Elba is a statically-typed programming language designed for clarity, performanc
 ## 🚀 Installation
 
 ### Prerequisites
-- **Zig 0.15.2** or later ([Download](https://ziglang.org/download/))
-- (Optional) **LLVM 20** for native compilation
-- (Optional) **GCC or Clang** for C code compilation
+
+- **GCC 7.0+** or **Clang 6.0+** (C11 support required)
+- **Make** (GNU Make 3.82+)
+- (Optional) **LLVM 20** for native code compilation
 
 ### Building from Source
 
@@ -80,23 +83,76 @@ git clone https://github.com/yourusername/elba.git
 cd elba
 
 # Build the compiler
-zig build
+make
 
 # Verify installation
-./zig-out/bin/elba --version
+./bin/elba --version
+
+# Run demo
+./bin/elba --test
+
+# Show all options
+./bin/elba --help
 ```
 
-### Quick Test
+### Build Options
 
+The build system automatically detects LLVM:
+- **With LLVM**: Enables `--emit-llvm` and `--emit-obj` flags for native code generation
+- **Without LLVM**: Core compiler functionality still available (interpret and transpile to C)
+
+To manually disable LLVM even if installed:
 ```bash
-# Run an example
-./zig-out/bin/elba examples/hello_world.elba
-
-# Start the REPL
-./zig-out/bin/elba repl
+make NO_LLVM=1
 ```
 
 ## 🏁 Quick Start
+
+### Basic Usage
+
+```bash
+# Interpret a program (fastest startup)
+./bin/elba program.elba
+
+# With IR optimization
+./bin/elba program.elba --optimize --ir-interp
+
+# Generate portable C code
+./bin/elba program.elba --emit-c output.c
+gcc output.c -o program -lm
+./program
+
+# Generate LLVM IR (if LLVM available)
+./bin/elba program.elba --emit-llvm output.ll
+
+# Generate native object file (if LLVM available)
+./bin/elba program.elba --emit-obj output.o
+```
+
+### Example Program
+
+Create `hello.elba`:
+```elba
+const name = "World";
+const greeting = "Hello, " + name + "!";
+print(greeting);
+
+let x = 42;
+let y = 3.14;
+let result = x + y;
+print("Result:", result);
+```
+
+Run it:
+```bash
+./bin/elba hello.elba
+```
+
+Output:
+```
+Hello, World!
+Result: 45.14
+```
 
 See full documentation in [CONTRIBUTING.md](CONTRIBUTING.md) and examples in the `examples/` directory.
 

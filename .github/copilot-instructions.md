@@ -7,16 +7,18 @@ When working on the Elba programming language:
     - Or, use a single elba file for everything.
 
 2. When building:
-    - Use `zig build` to compile the project.
-    - Use `zig build run <file>` to run a specific elba file. (Additionally, you can use `./zig-out/bin/elba.exe <file>` to run it directly.)
+    - Use `make` to compile the project.
+    - Use `./bin/elba <file>` to run a specific elba file.
+    - Use `make clean` to remove build artifacts.
 
 3. When editing:
     - Ensure your code adheres to the project's coding style and conventions.
     - Write clear and concise comments to explain complex logic.
     - Make sure memory management is handled properly to avoid leaks.
     - Errors are handled gracefully with informative messages.
-    - Follow Zig's best practices for performance and safety.
+    - Follow C11 best practices for performance and safety.
     - Make sure texts are UTF-8 Encoded only.
+    - Compile with warnings enabled and address all warnings.
 
 4. When finalizing changes:
     - Test thoroughly to ensure new features work as intended and do not introduce bugs.
