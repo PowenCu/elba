@@ -70,7 +70,7 @@ pub fn build(b: *std.Build) void {
         exe_mod.addLibraryPath(.{
             .src_path = .{
                 .owner = b,
-                .sub_path = "C:/msys64/mingw64/bin"
+                .sub_path = "C:/msys64/mingw64/lib"
             }
         });
     }
