@@ -61,7 +61,7 @@ pub fn build(b: *std.Build) void {
             }
         });
     }
-    // On Linux/macOS, rely on system paths (pkg-config, default locations)
+    // On Linux/macOS, system default include paths will be used automatically
     
     if (llvm_lib_path) |lib_path| {
         exe_mod.addLibraryPath(.{ .cwd_relative = lib_path });
@@ -74,7 +74,6 @@ pub fn build(b: *std.Build) void {
             }
         });
     }
-    // On Linux/macOS, rely on system paths
     
     exe_mod.linkSystemLibrary("libLLVM-20", .{});
 
