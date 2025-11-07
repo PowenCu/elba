@@ -40,19 +40,42 @@ pub fn build(b: *std.Build) void {
     });
 
     // This configures the module to link against the LLVM libraries.
-    exe_mod.addSystemIncludePath(.{
-        .src_path = .{
-            .owner = b,
-            .sub_path = "C:/msys64/mingw64/include"
-        }
-    });
-    exe_mod.addLibraryPath(.{
-        .src_path = .{
-            .owner = b,
-            .sub_path = "C:/msys64/mingw64/bin"
-        }
-    });
+    // Support cross-platform LLVM configuration via environment variables
     exe_mod.link_libc = true;
+    
+    // Try to get LLVM paths from environment variables
+    const llvm_include_path = b.graph.env_map.get("LLVM_INCLUDE_PATH");
+    const llvm_lib_path = b.graph.env_map.get("LLVM_LIB_PATH");
+    
+    // Detect platform from target
+    const is_windows = target.result.os.tag == .windows;
+    
+    if (llvm_include_path) |include_path| {
+        exe_mod.addSystemIncludePath(.{ .cwd_relative = include_path });
+    } else if (is_windows) {
+        // Windows default: try common MSYS2/MinGW paths
+        exe_mod.addSystemIncludePath(.{
+            .src_path = .{
+                .owner = b,
+                .sub_path = "C:/msys64/mingw64/include"
+            }
+        });
+    }
+    // On Linux/macOS, rely on system paths (pkg-config, default locations)
+    
+    if (llvm_lib_path) |lib_path| {
+        exe_mod.addLibraryPath(.{ .cwd_relative = lib_path });
+    } else if (is_windows) {
+        // Windows default: try common MSYS2/MinGW paths
+        exe_mod.addLibraryPath(.{
+            .src_path = .{
+                .owner = b,
+                .sub_path = "C:/msys64/mingw64/bin"
+            }
+        });
+    }
+    // On Linux/macOS, rely on system paths
+    
     exe_mod.linkSystemLibrary("libLLVM-20", .{});
 
     // Modules can depend on one another using the `std.Build.Module.addImport` function.

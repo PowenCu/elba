@@ -38,6 +38,18 @@ cd elba
 zig build
 ```
 
+### Configuring LLVM
+If LLVM is installed in a non-standard location, set environment variables:
+```bash
+# Linux/macOS
+export LLVM_INCLUDE_PATH=/path/to/llvm/include
+export LLVM_LIB_PATH=/path/to/llvm/lib
+
+# Windows (PowerShell)
+$env:LLVM_INCLUDE_PATH = "C:\path\to\llvm\include"
+$env:LLVM_LIB_PATH = "C:\path\to\llvm\lib"
+```
+
 ### Running Tests
 ```bash
 # Run all examples

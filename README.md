@@ -86,6 +86,33 @@ zig build
 ./zig-out/bin/elba --version
 ```
 
+#### Configuring LLVM (Optional)
+
+If you have LLVM installed in a non-standard location, you can specify the paths using environment variables:
+
+**Windows (PowerShell):**
+```powershell
+$env:LLVM_INCLUDE_PATH = "C:\path\to\llvm\include"
+$env:LLVM_LIB_PATH = "C:\path\to\llvm\lib"
+zig build
+```
+
+**Windows (Command Prompt):**
+```cmd
+set LLVM_INCLUDE_PATH=C:\path\to\llvm\include
+set LLVM_LIB_PATH=C:\path\to\llvm\lib
+zig build
+```
+
+**Linux/macOS:**
+```bash
+export LLVM_INCLUDE_PATH=/path/to/llvm/include
+export LLVM_LIB_PATH=/path/to/llvm/lib
+zig build
+```
+
+**Note:** On Windows, the build system defaults to `C:/msys64/mingw64/` if environment variables are not set. On Linux/macOS, it uses system default paths.
+
 ### Quick Test
 
 ```bash
