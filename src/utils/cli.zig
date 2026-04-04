@@ -188,7 +188,7 @@ pub fn printHelp() void {
         \\    elba benchmark                         Run benchmarks
         \\    elba --verbose program.elba            Run with verbose output
         \\
-        \\For more information, visit: https://github.com/yourusername/elba
+        \\For more information, visit: https://github.com/powencu/elba
         \\
     ;
     std.debug.print("{s}", .{help_text});

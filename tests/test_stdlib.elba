@@ -1,7 +1,7 @@
 // Test Standard Library
 
-take "std/math.elba";
-take "std/string.elba";
+take "../std/math.elba";
+take "../std/string.elba";
 
 // Test builtin functions
 println("=== Testing Builtin Functions ===");

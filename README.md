@@ -69,14 +69,14 @@ Elba is a statically-typed programming language designed for clarity, performanc
 
 ### Prerequisites
 - **Zig 0.15.2** or later ([Download](https://ziglang.org/download/))
-- (Optional) **LLVM 20** for native compilation
+- (Optional) **LLVM 20+** for native compilation
 - (Optional) **GCC or Clang** for C code compilation
 
 ### Building from Source
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/elba.git
+git clone https://github.com/powencu/elba.git
 cd elba
 
 # Build the compiler
@@ -94,9 +94,21 @@ zig build
 
 # Start the REPL
 ./zig-out/bin/elba repl
+
+# Run the test suite
+powershell -ExecutionPolicy Bypass -File "run_tests.ps1"
 ```
 
-## 🏁 Quick Start
+## 🔧 Developer Tools
+
+**New in this release:**
+
+- **Test Runner** (`run_tests.ps1`) - Automated test suite with reporting
+- **Benchmark Tool** (`benchmark_examples.ps1`) - Performance measurement
+- **Development Guide** (`DEVELOPMENT.md`) - Architecture and contribution guide
+- **Improvements Document** (`IMPROVEMENTS.md`) - Recent enhancements and roadmap
+
+## 📊 Quick Start
 
 See full documentation in [CONTRIBUTING.md](CONTRIBUTING.md) and examples in the `examples/` directory.
 

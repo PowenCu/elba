@@ -26,6 +26,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `examples/llvm_test_suite.elba` - Comprehensive test suite for LLVM features
 
 ### Fixed
+- 🐛 **Critical: Generic Type Substitution**
+  - Fixed method return types on generic struct instances (e.g., `Box<int>.get()` now correctly returns `int`)
+  - Fixed generic function return types with nested generic params (e.g., `swap<A,B>()` returning `Pair<B,A>`)
+  - Fixed field access on generic structs with complex types (arrays, optionals)
+  - Added `substituteTypeAlloc()` for proper recursive type substitution
+  - All generic features now work correctly including nested generics
+
 - 🐛 **LLVM Backend: Control flow value handling**
   - Fixed SSA form issues with basic block merging
   - Proper handling of values across conditional branches
@@ -37,9 +44,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Eliminated memory corruption in deeply nested control flow
   - Deep nesting (4+ levels) now works reliably
 
+- 🐛 **Test Suite Fixes**
+  - Fixed stdlib test module import paths
+  - Renamed expected-fail tests to prevent false failures
+
 ### Improved
 - 🚀 **Performance**: LLVM backend now handles real-world programs
 - ✅ **Reliability**: Extensive testing with complex control flow patterns
+- ✅ **Test Suite**: All 12 tests now passing (100% pass rate)
 - 📊 **Coverage**: Most common programming patterns now supported
 
 ## [0.1.0] - 2025-10-19

@@ -1428,32 +1428,28 @@ pub const Parser = struct {
         // Expect 'in'
         try self.expect(.in_kw);
 
-        // Parse iterable - must be a simple identifier or expression without struct init
-        // To keep it simple, we only support variables and array accesses for now
-        if (self.current.tag != .identifier) {
-            self.error_reporter.reportTokenError(
-                "error",
-                "Expected iterable expression after 'in'",
-                self.current,
-            );
-            return error.UnexpectedToken;
+        // Parse iterable expression or range start expression
+        const iterable = try self.parseExpr();
+
+        // Detect range syntax: start..end or start..=end
+        var is_range = false;
+        var range_end: ?*Expr = null;
+        var range_inclusive = false;
+
+        if (self.current.tag == .dot_dot) {
+            is_range = true;
+            self.advance();
+
+            if (self.current.tag == .equal) {
+                range_inclusive = true;
+                self.advance();
+            }
+
+            range_end = try self.parseExpr();
         }
-
-        const iterable_name = self.source[self.current.loc.start..self.current.loc.end];
-        self.advance();
-
-        const iterable_expr = try self.allocator.create(Expr);
-        iterable_expr.* = .{ .variable = iterable_name };
-
-        const iterable = iterable_expr;
 
         // Expect closing parenthesis
         try self.expect(.rparen);
-
-        // Check if it's a range (we need to detect .. in the expression)
-        // For now, we'll mark it as range if the iterable is a binary expression with ..
-        // This is a simplified approach - a better implementation would handle ranges specially
-        const is_range = false; // TODO: Detect range expressions properly
 
         // Parse body
         const body = try self.parseBlock();
@@ -1463,6 +1459,8 @@ pub const Parser = struct {
             .for_expr = .{
                 .iterator = iterator,
                 .iterable = iterable,
+                .range_end = range_end,
+                .range_inclusive = range_inclusive,
                 .body = body,
                 .is_range = is_range,
             },
@@ -1567,12 +1565,17 @@ pub const Parser = struct {
             // Check for range pattern: 1..10 or 1..=10
             if (self.current.tag == .dot_dot) {
                 self.advance();
-                const inclusive = false; // TODO: Support ..= for inclusive ranges
+
+                var inclusive = false;
+                if (self.current.tag == .equal) {
+                    inclusive = true;
+                    self.advance();
+                }
 
                 if (self.current.tag != .number) {
                     self.error_reporter.reportTokenError(
                         "error",
-                        "Expected number after '..' in range pattern",
+                        "Expected number after '..' or '..=' in range pattern",
                         self.current,
                     );
                     return error.UnexpectedToken;

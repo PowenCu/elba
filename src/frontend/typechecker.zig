@@ -387,6 +387,8 @@ fn convertToGenericType(typ: Type, type_params: [][]const u8) Type {
 }
 
 fn substituteType(typ: Type, type_params: [][]const u8, type_args: []Type) Type {
+    // Note: This function doesn't have access to an allocator - returning types-by-value
+    // For complex types like generic_instance, use substituteTypeAlloc
     switch (typ) {
         .generic_param => |param_name| {
             // Find the parameter index and return corresponding type argument
@@ -407,40 +409,74 @@ fn substituteType(typ: Type, type_params: [][]const u8, type_args: []Type) Type 
             }
             return typ;
         },
+        else => return typ,
+    }
+}
+
+// Allocator-aware version that can handle complex generic instances
+fn substituteTypeAlloc(allocator: std.mem.Allocator, typ: Type, type_params: [][]const u8, type_args: []Type, env: *TypeEnvironment) !Type {
+    switch (typ) {
+        .generic_param => |param_name| {
+            for (type_params, 0..) |tp, i| {
+                if (std.mem.eql(u8, tp, param_name)) {
+                    return type_args[i];
+                }
+            }
+            return typ;
+        },
+        .user_type => |type_name| {
+            for (type_params, 0..) |tp, i| {
+                if (std.mem.eql(u8, tp, type_name)) {
+                    return type_args[i];
+                }
+            }
+            return typ;
+        },
+        .optional => |inner_ptr| {
+            // Recursively substitute the inner type of optional
+            const substituted_inner = try substituteTypeAlloc(allocator, inner_ptr.*, type_params, type_args, env);
+            if (!substituted_inner.eql(inner_ptr.*)) {
+                const new_inner_ptr = try allocator.create(Type);
+                new_inner_ptr.* = substituted_inner;
+                try env.allocated_types.append(env.allocator, new_inner_ptr);
+                return Type{ .optional = new_inner_ptr };
+            }
+            return typ;
+        },
+        .array => |elem_ptr| {
+            // Recursively substitute the element type of array
+            const substituted_elem = try substituteTypeAlloc(allocator, elem_ptr.*, type_params, type_args, env);
+            if (!substituted_elem.eql(elem_ptr.*)) {
+                const new_elem_ptr = try allocator.create(Type);
+                new_elem_ptr.* = substituted_elem;
+                try env.allocated_types.append(env.allocator, new_elem_ptr);
+                return Type{ .array = new_elem_ptr };
+            }
+            return typ;
+        },
         .generic_instance => |inst| {
-            // Recursively substitute type arguments
-            var new_args = std.ArrayList(Type).initCapacity(std.heap.page_allocator, inst.type_args.len) catch return typ;
-
-            for (inst.type_args) |arg| {
-                new_args.append(std.heap.page_allocator, substituteType(arg, type_params, type_args)) catch return typ;
+            // Recursively substitute type arguments in the generic instance
+            var new_args = try allocator.alloc(Type, inst.type_args.len);
+            var any_changed = false;
+            
+            for (inst.type_args, 0..) |arg, i| {
+                const substituted = try substituteTypeAlloc(allocator, arg, type_params, type_args, env);
+                new_args[i] = substituted;
+                if (!substituted.eql(arg)) {
+                    any_changed = true;
+                }
             }
-
-            return Type{ .generic_instance = .{
-                .base_type = inst.base_type,
-                .type_args = new_args.toOwnedSlice(std.heap.page_allocator) catch return typ,
-            } };
-        },
-        .array => |elem_type_ptr| {
-            // Recursively substitute the element type
-            const substituted_elem = substituteType(elem_type_ptr.*, type_params, type_args);
-            const new_elem_ptr = std.heap.page_allocator.create(Type) catch return typ;
-            new_elem_ptr.* = substituted_elem;
-            return Type{ .array = new_elem_ptr };
-        },
-        .optional => |inner_type_ptr| {
-            // Recursively substitute the inner type
-            const substituted_inner = substituteType(inner_type_ptr.*, type_params, type_args);
-            const new_inner_ptr = std.heap.page_allocator.create(Type) catch return typ;
-            new_inner_ptr.* = substituted_inner;
-            return Type{ .optional = new_inner_ptr };
-        },
-        .union_type => |types| {
-            // Recursively substitute each type in the union
-            var new_types = std.ArrayList(Type).initCapacity(std.heap.page_allocator, types.len) catch return typ;
-            for (types) |t| {
-                new_types.append(std.heap.page_allocator, substituteType(t, type_params, type_args)) catch return typ;
+            
+            if (any_changed) {
+                try env.allocated_slices.append(env.allocator, new_args);
+                return Type{ .generic_instance = .{
+                    .base_type = inst.base_type,
+                    .type_args = new_args,
+                } };
+            } else {
+                allocator.free(new_args);
+                return typ;
             }
-            return Type{ .union_type = new_types.toOwnedSlice(std.heap.page_allocator) catch return typ };
         },
         else => return typ,
     }
@@ -479,90 +515,55 @@ fn isTypeCompatible(value_type: Type, target_type: Type) bool {
     return false;
 }
 
+/// Helper to check variable declaration (const or let) with the same type checking logic
+fn checkVarDecl(name: []const u8, value: *const Expr, type_annotation: ?Type, mutable: bool, env: *TypeEnvironment) !void {
+    const value_type = try inferExpr(value, env);
+
+    // If type annotation is provided, check it matches the value type
+    if (type_annotation) |annotated_type| {
+        // Resolve type alias
+        const resolved_type = resolveTypeAlias(annotated_type, env);
+
+        // Allow null assignment to optional types
+        if (value_type == .unknown and resolved_type == .optional) {
+            try env.set(name, .{ .typ = resolved_type, .mutable = mutable });
+            return;
+        }
+        // Allow assigning non-optional value to optional type
+        if (resolved_type == .optional) {
+            const inner_type = resolved_type.optional.*;
+            if (inner_type.eql(value_type)) {
+                try env.set(name, .{ .typ = resolved_type, .mutable = mutable });
+                return;
+            }
+        }
+        // Check union type compatibility
+        if (isTypeCompatible(value_type, resolved_type)) {
+            try env.set(name, .{ .typ = resolved_type, .mutable = mutable });
+            return;
+        }
+        // Allow implicit int->float conversion
+        if (resolved_type == .float and value_type == .int) {
+            try env.set(name, .{ .typ = .float, .mutable = mutable });
+            return;
+        }
+        var buf1: [256]u8 = undefined;
+        var buf2: [256]u8 = undefined;
+        std.debug.print("Type error: Variable '{s}' declared as '{s}' but initialized with '{s}'\n", .{ name, typeToString(resolved_type, &buf1), typeToString(value_type, &buf2) });
+        return error.TypeError;
+    } else {
+        // No type annotation, use inferred type
+        try env.set(name, .{ .typ = value_type, .mutable = mutable });
+    }
+}
+
 pub fn checkStmt(stmt: *const Stmt, env: *TypeEnvironment) error{ TypeError, UndefinedVariable, OutOfMemory }!void {
     switch (stmt.*) {
         .const_decl => |decl| {
-            const value_type = try inferExpr(decl.value, env);
-
-            // If type annotation is provided, check it matches the value type
-            if (decl.type_annotation) |annotated_type| {
-                // Resolve type alias
-                const resolved_type = resolveTypeAlias(annotated_type, env);
-
-                // Allow null assignment to optional types
-                if (value_type == .unknown and resolved_type == .optional) {
-                    try env.set(decl.name, .{ .typ = resolved_type, .mutable = false });
-                    return;
-                }
-                // Allow assigning non-optional value to optional type
-                if (resolved_type == .optional) {
-                    const inner_type = resolved_type.optional.*;
-                    if (inner_type.eql(value_type)) {
-                        try env.set(decl.name, .{ .typ = resolved_type, .mutable = false });
-                        return;
-                    }
-                }
-                // Check union type compatibility
-                if (isTypeCompatible(value_type, resolved_type)) {
-                    try env.set(decl.name, .{ .typ = resolved_type, .mutable = false });
-                    return;
-                }
-                // Allow implicit int->float conversion
-                if (resolved_type == .float and value_type == .int) {
-                    try env.set(decl.name, .{ .typ = .float, .mutable = false });
-                    return;
-                }
-                var buf1: [256]u8 = undefined;
-                var buf2: [256]u8 = undefined;
-                std.debug.print("Type error: Variable '{s}' declared as '{s}' but initialized with '{s}'\n", .{ decl.name, typeToString(resolved_type, &buf1), typeToString(value_type, &buf2) });
-                return error.TypeError;
-            } else {
-                // No type annotation, use inferred type
-                try env.set(decl.name, .{ .typ = value_type, .mutable = false });
-            }
+            try checkVarDecl(decl.name, decl.value, decl.type_annotation, false, env);
         },
         .let_decl => |decl| {
-            const value_type = try inferExpr(decl.value, env);
-
-            // If type annotation is provided, check it matches the value type
-            if (decl.type_annotation) |annotated_type| {
-                // Resolve type alias
-                const resolved_type = resolveTypeAlias(annotated_type, env);
-
-                // Allow null assignment to optional types
-                if (value_type == .unknown and resolved_type == .optional) {
-                    try env.set(decl.name, .{ .typ = resolved_type, .mutable = true });
-                    return;
-                }
-                // Allow assigning non-optional value to optional type
-                if (resolved_type == .optional) {
-                    const inner_type = resolved_type.optional.*;
-                    if (inner_type.eql(value_type)) {
-                        try env.set(decl.name, .{ .typ = resolved_type, .mutable = true });
-                        return;
-                    }
-                }
-                // Check union type compatibility
-                if (isTypeCompatible(value_type, resolved_type)) {
-                    try env.set(decl.name, .{ .typ = resolved_type, .mutable = true });
-                    return;
-                }
-                if (!resolved_type.eql(value_type)) {
-                    // Allow implicit int->float conversion
-                    if (resolved_type == .float and value_type == .int) {
-                        try env.set(decl.name, .{ .typ = .float, .mutable = true });
-                        return;
-                    }
-                    var buf1: [256]u8 = undefined;
-                    var buf2: [256]u8 = undefined;
-                    std.debug.print("Type error: Variable '{s}' declared as '{s}' but initialized with '{s}'\n", .{ decl.name, typeToString(resolved_type, &buf1), typeToString(value_type, &buf2) });
-                    return error.TypeError;
-                }
-                try env.set(decl.name, .{ .typ = resolved_type, .mutable = true });
-            } else {
-                // No type annotation, use inferred type
-                try env.set(decl.name, .{ .typ = value_type, .mutable = true });
-            }
+            try checkVarDecl(decl.name, decl.value, decl.type_annotation, true, env);
         },
         .fn_decl => |decl| {
             // Check if this is a generic function
@@ -1009,10 +1010,10 @@ pub fn inferExpr(expr: *const Expr, env: *TypeEnvironment) error{ TypeError, Und
                 // Substitute type parameters with type arguments
                 var param_types = try env.allocator.alloc(Type, template.parameters.len);
                 for (template.parameters, 0..) |param, i| {
-                    param_types[i] = substituteType(param.typ, template.type_params, call.type_args);
+                    param_types[i] = try substituteTypeAlloc(env.allocator, param.typ, template.type_params, call.type_args, env);
                 }
 
-                const return_type = substituteType(template.return_type, template.type_params, call.type_args);
+                const return_type = try substituteTypeAlloc(env.allocator, template.return_type, template.type_params, call.type_args, env);
 
                 // Check argument count and types
                 if (call.arguments.len != param_types.len) {
@@ -1033,7 +1034,8 @@ pub fn inferExpr(expr: *const Expr, env: *TypeEnvironment) error{ TypeError, Und
                     }
                 }
 
-                env.allocator.free(param_types);
+                // Track allocation for cleanup
+                try env.allocated_slices.append(env.allocator, param_types);
                 return return_type;
             }
 
@@ -1086,7 +1088,7 @@ pub fn inferExpr(expr: *const Expr, env: *TypeEnvironment) error{ TypeError, Und
                     var expected_type: Type = .unknown;
                     for (template.fields) |field_decl| {
                         if (std.mem.eql(u8, field_decl.name, field_init.name)) {
-                            expected_type = substituteType(field_decl.typ, template.type_params, init.type_args);
+                            expected_type = try substituteTypeAlloc(env.allocator, field_decl.typ, template.type_params, init.type_args, env);
                             found = true;
                             break;
                         }
@@ -1209,8 +1211,8 @@ pub fn inferExpr(expr: *const Expr, env: *TypeEnvironment) error{ TypeError, Und
                         return error.TypeError;
                     };
 
-                    // Substitute type parameters
-                    return substituteType(ft, template.type_params, inst.type_args);
+                    // Substitute type parameters (use allocator-aware version for complex types)
+                    return try substituteTypeAlloc(env.allocator, ft, template.type_params, inst.type_args, env);
                 },
                 else => {
                     var buf: [256]u8 = undefined;
@@ -1292,7 +1294,8 @@ pub fn inferExpr(expr: *const Expr, env: *TypeEnvironment) error{ TypeError, Und
                     // Check argument types (skip index 0 which is 'self')
                     for (call.arguments, 0..) |arg, i| {
                         const arg_type = try inferExpr(arg, env);
-                        const expected_type = method.parameters[i + 1].typ; // +1 to skip 'self'
+                        // Substitute type parameters in the expected parameter type
+                        const expected_type = try substituteTypeAlloc(env.allocator, method.parameters[i + 1].typ, template.type_params, instance.type_args, env); // +1 to skip 'self'
                         // Use isTypeCompatible to allow passing values to union parameters
                         if (!isTypeCompatible(arg_type, expected_type)) {
                             var buf1: [256]u8 = undefined;
@@ -1302,21 +1305,8 @@ pub fn inferExpr(expr: *const Expr, env: *TypeEnvironment) error{ TypeError, Und
                         }
                     }
 
-                    // Substitute type parameters in the return type
-                    // If return type is a generic_instance with type params from the template,
-                    // replace them with the actual type args from the instance
-                    const return_type = method.return_type;
-                    switch (return_type) {
-                        .generic_instance => |ret_instance| {
-                            // Check if the base type matches our struct
-                            if (std.mem.eql(u8, ret_instance.base_type, instance.base_type)) {
-                                // Return the same generic instance type as the receiver
-                                return receiver_type;
-                            }
-                            return return_type;
-                        },
-                        else => return return_type,
-                    }
+                    // Substitute type parameters in the return type using the instance's type args
+                    return try substituteTypeAlloc(env.allocator, method.return_type, template.type_params, instance.type_args, env);
                 },
                 else => {
                     var buf: [256]u8 = undefined;
@@ -1400,11 +1390,18 @@ pub fn inferExpr(expr: *const Expr, env: *TypeEnvironment) error{ TypeError, Und
             defer scoped_env.deinit();
 
             if (for_expr.is_range) {
-                // Range-based for loop expects int iterable
-                if (iterable_type != .int) {
-                    std.debug.print("Type error: Range for loop requires int range\n", .{});
+                // Range-based for loop expects integer start and end bounds
+                const end_expr = for_expr.range_end orelse {
+                    std.debug.print("Type error: Range for loop is missing an end bound\n", .{});
+                    return error.TypeError;
+                };
+                const end_type = try inferExpr(end_expr, env);
+
+                if (iterable_type != .int or end_type != .int) {
+                    std.debug.print("Type error: Range for loop requires int bounds\n", .{});
                     return error.TypeError;
                 }
+
                 // Iterator variable is int
                 try scoped_env.set(for_expr.iterator, .{ .typ = .int, .mutable = false });
             } else {

@@ -1,7 +1,14 @@
 const std = @import("std");
+pub const runtime = @import("runtime.zig");
 
 /// Simple Intermediate Representation for Elba
 /// This is a stack-based IR with basic operations
+///
+/// The IR uses a stack-based execution model where:
+/// - Values are pushed onto and popped from a stack
+/// - Operations consume values from the stack and push results
+/// - Variables are stored in a separate environment (hash map)
+/// - Functions are stored with their instruction sequences
 pub const ValueType = enum {
     int,
     float,
@@ -9,6 +16,41 @@ pub const ValueType = enum {
     string,
     null_type,
     void,
+    array,
+    struct_type,
+    function,
+    optional,
+
+    /// Convert from runtime TypeTag
+    pub fn fromRuntimeTag(tag: runtime.TypeTag) ValueType {
+        return switch (tag) {
+            .null_type => .null_type,
+            .int => .int,
+            .float => .float,
+            .bool => .bool,
+            .string => .string,
+            .array => .array,
+            .struct_type => .struct_type,
+            .function => .function,
+            .optional => .optional,
+            .union_type => .struct_type, // unions represented as structs at runtime
+        };
+    }
+
+    /// Convert to runtime TypeTag
+    pub fn toRuntimeTag(self: ValueType) runtime.TypeTag {
+        return switch (self) {
+            .null_type, .void => .null_type,
+            .int => .int,
+            .float => .float,
+            .bool => .bool,
+            .string => .string,
+            .array => .array,
+            .struct_type => .struct_type,
+            .function => .function,
+            .optional => .optional,
+        };
+    }
 };
 
 pub const Register = u32;
@@ -22,6 +64,8 @@ pub const Opcode = enum {
     load_null, // Load null value
     load_var, // Load variable from environment
     store_var, // Store to variable
+    load_global, // Load global variable
+    store_global, // Store global variable
 
     // Arithmetic
     add,
@@ -50,39 +94,86 @@ pub const Opcode = enum {
     jump_if_false, // Conditional jump
     jump_if_true, // Conditional jump
     call, // Function call
+    call_indirect, // Call function pointer on stack
     ret, // Return from function
+    ret_void, // Return void (no value)
 
     // Stack operations
     pop, // Pop value from stack
     dup, // Duplicate top of stack
+    swap, // Swap top two stack values
+    rot, // Rotate top 3 values (a b c -> b c a)
 
     // Built-in functions
     builtin_call, // Call builtin function
 
     // Array operations
-    array_new, // Create new array
+    array_new, // Create new array with capacity
+    array_literal, // Create array from N stack values
     array_get, // Get array element
     array_set, // Set array element
+    array_len, // Get array length
+    array_push, // Push element to array
+    array_pop, // Pop element from array
 
     // Struct operations
     struct_new, // Create new struct
-    field_get, // Get struct field
-    field_set, // Set struct field
+    field_get, // Get struct field by index
+    field_get_name, // Get struct field by name
+    field_set, // Set struct field by index
+    field_set_name, // Set struct field by name
+    method_call, // Call method on struct
+
+    // Optional operations
+    optional_wrap, // Wrap value in optional (T -> T?)
+    optional_unwrap, // Unwrap optional (T? -> T, error if null)
+    optional_is_null, // Check if optional is null
+
+    // String operations
+    str_concat, // Concatenate two strings
+    str_len, // Get string length
 
     // Type operations
-    type_check, // Check type
+    type_check, // Check type (is)
+    type_check_not, // Check type negated (is not)
     cast, // Type cast
+
+    // Memory/scope
+    enter_scope, // Enter new scope
+    leave_scope, // Leave scope (cleanup locals)
 
     // Special
     halt, // Stop execution
+    nop, // No operation
+    debug_print, // Debug: print stack top
 };
 
 pub const Instruction = struct {
     op: Opcode,
-    operand1: i64 = 0,
-    operand2: i64 = 0,
-    operand3: i64 = 0,
-    string_data: ?[]const u8 = null,
+    operand1: i64 = 0, // Primary operand (constant value, jump target, etc.)
+    operand2: i64 = 0, // Secondary operand (arg count, field index, etc.)
+    operand3: i64 = 0, // Tertiary operand (type info, flags, etc.)
+    string_data: ?[]const u8 = null, // String data (variable names, function names, etc.)
+
+    /// Create a simple instruction with no operands
+    pub fn simple(op: Opcode) Instruction {
+        return .{ .op = op };
+    }
+
+    /// Create an instruction with one integer operand
+    pub fn withInt(op: Opcode, value: i64) Instruction {
+        return .{ .op = op, .operand1 = value };
+    }
+
+    /// Create an instruction with string data
+    pub fn withString(op: Opcode, str: []const u8) Instruction {
+        return .{ .op = op, .string_data = str };
+    }
+
+    /// Create an instruction with string and operand
+    pub fn withStringAndOp(op: Opcode, str: []const u8, operand: i64) Instruction {
+        return .{ .op = op, .string_data = str, .operand2 = operand };
+    }
 };
 
 pub const Function = struct {
@@ -93,6 +184,12 @@ pub const Function = struct {
     instructions: []Instruction,
     type_params: [][]const u8 = &[_][]const u8{}, // Generic type parameters
     is_generic: bool = false, // Whether this is a generic template
+    return_type: ValueType = .void, // Return type for codegen
+
+    /// Check if function is the entry point
+    pub fn isEntryPoint(self: Function, entry_name: []const u8) bool {
+        return std.mem.eql(u8, self.name, entry_name);
+    }
 };
 
 pub const Program = struct {

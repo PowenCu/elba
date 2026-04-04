@@ -440,19 +440,51 @@ pub fn evalExpr(expr: *const Expr, env: *Environment) error{ UndefinedVariable, 
             defer scoped_env.deinit();
 
             if (for_expr.is_range) {
-                // Range-based for loop (start..end)
-                if (iterable_value != .int) return error.TypeError;
+                // Range-based for loop (start..end or start..=end)
+                if (iterable_value != .int) {
+                    std.debug.print("Runtime error: Range for loop start must be int\n", .{});
+                    return error.TypeError;
+                }
+
+                const end_expr = for_expr.range_end orelse {
+                    std.debug.print("Runtime error: Range for loop missing end expression\n", .{});
+                    return error.TypeError;
+                };
+
+                const end_value = try evalExpr(end_expr, env);
+                if (end_value != .int) {
+                    std.debug.print("Runtime error: Range for loop end must be int\n", .{});
+                    return error.TypeError;
+                }
+
                 const start = iterable_value.int;
-
-                // Iterable should be a binary expression with .. operator
-                // For now, we'll handle this in parser to create proper range values
-                // This is a simplified version - full impl would need range type
-                const end = start + 10; // Placeholder
-
+                const end = end_value.int;
                 var i = start;
-                while (i < end) : (i += 1) {
-                    try scoped_env.setLocal(for_expr.iterator, Value{ .int = i });
-                    _ = try evalExpr(for_expr.body, &scoped_env);
+
+                if (start <= end) {
+                    if (for_expr.range_inclusive) {
+                        while (i <= end) : (i += 1) {
+                            try scoped_env.setLocal(for_expr.iterator, Value{ .int = i });
+                            _ = try evalExpr(for_expr.body, &scoped_env);
+                        }
+                    } else {
+                        while (i < end) : (i += 1) {
+                            try scoped_env.setLocal(for_expr.iterator, Value{ .int = i });
+                            _ = try evalExpr(for_expr.body, &scoped_env);
+                        }
+                    }
+                } else {
+                    if (for_expr.range_inclusive) {
+                        while (i >= end) : (i -= 1) {
+                            try scoped_env.setLocal(for_expr.iterator, Value{ .int = i });
+                            _ = try evalExpr(for_expr.body, &scoped_env);
+                        }
+                    } else {
+                        while (i > end) : (i -= 1) {
+                            try scoped_env.setLocal(for_expr.iterator, Value{ .int = i });
+                            _ = try evalExpr(for_expr.body, &scoped_env);
+                        }
+                    }
                 }
             } else {
                 // Array-based for loop

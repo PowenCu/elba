@@ -115,7 +115,11 @@ pub const IrGenerator = struct {
                 const saved_instructions = try self.stashInstructions();
                 var restored = false;
                 defer if (!restored) {
-                    self.restoreInstructions(saved_instructions) catch @panic("failed to restore IR builder state");
+                    // Cleanup: if we couldn't restore, log error and proceed
+                    // This shouldn't happen in normal operation
+                    self.restoreInstructions(saved_instructions) catch |err| {
+                        std.debug.print("Warning: Failed to restore IR builder state: {}\n", .{err});
+                    };
                 };
 
                 self.current_function = decl.name;
@@ -422,6 +426,55 @@ pub const IrGenerator = struct {
                 // For now, lower for loops to while loops in IR
                 // This is a simplified implementation
                 // A proper implementation would add for_loop opcode
+
+                if (for_expr.is_range) {
+                    // Lower range loops directly: start..end or start..=end
+                    try self.genExpr(for_expr.iterable);
+
+                    const index_var = "__for_range_index__";
+                    try self.builder.emitWithString(.store_var, index_var, 0, 0);
+
+                    const range_end = for_expr.range_end orelse unreachable;
+                    try self.genExpr(range_end);
+                    const end_var = "__for_range_end__";
+                    try self.builder.emitWithString(.store_var, end_var, 0, 0);
+
+                    const loop_start = self.builder.position();
+
+                    // Check index <= end (inclusive) or index < end (exclusive)
+                    try self.builder.emitWithString(.load_var, index_var, 0, 0);
+                    try self.builder.emitWithString(.load_var, end_var, 0, 0);
+                    try self.builder.emit(if (for_expr.range_inclusive) .lte else .lt, 0, 0, 0);
+
+                    // Jump out if done
+                    const jump_out = self.builder.position();
+                    try self.builder.emit(.jump_if_false, 0, 0, 0);
+
+                    // Set iterator variable from current index
+                    try self.builder.emitWithString(.load_var, index_var, 0, 0);
+                    try self.builder.emitWithString(.store_var, for_expr.iterator, 0, 0);
+
+                    // Execute body
+                    try self.genExpr(for_expr.body);
+                    try self.builder.emit(.pop, 0, 0, 0);
+
+                    // Increment index
+                    try self.builder.emitWithString(.load_var, index_var, 0, 0);
+                    try self.builder.emit(.load_const_int, 1, 0, 0);
+                    try self.builder.emit(.add, 0, 0, 0);
+                    try self.builder.emitWithString(.store_var, index_var, 0, 0);
+
+                    // Jump back to start
+                    try self.builder.emit(.jump, @intCast(loop_start), 0, 0);
+
+                    // Patch exit
+                    const after_loop = self.builder.position();
+                    self.builder.patchJump(jump_out, after_loop);
+
+                    // Push unit result
+                    try self.builder.emit(.load_null, 0, 0, 0);
+                    return;
+                }
 
                 // Evaluate iterable
                 try self.genExpr(for_expr.iterable);

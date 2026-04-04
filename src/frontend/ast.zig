@@ -120,6 +120,8 @@ pub const Expr = union(enum) {
     pub const For = struct {
         iterator: []const u8, // Variable name for iterator
         iterable: *Expr, // Expression to iterate over (array or range)
+        range_end: ?*Expr = null, // End expression for range loops (start..end)
+        range_inclusive: bool = false, // true for start..=end, false for start..end
         body: *Expr, // Loop body
         is_range: bool, // true if iterating over range (start..end)
     };

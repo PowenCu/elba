@@ -43,17 +43,17 @@ pub fn build(b: *std.Build) void {
     exe_mod.addSystemIncludePath(.{
         .src_path = .{
             .owner = b,
-            .sub_path = "C:/msys64/mingw64/include"
+            .sub_path = "C:/msys64/ucrt64/include"
         }
     });
     exe_mod.addLibraryPath(.{
         .src_path = .{
             .owner = b,
-            .sub_path = "C:/msys64/mingw64/bin"
+            .sub_path = "C:/msys64/ucrt64/bin"
         }
     });
     exe_mod.link_libc = true;
-    exe_mod.linkSystemLibrary("libLLVM-20", .{});
+    exe_mod.linkSystemLibrary("libLLVM-22", .{});
 
     // Modules can depend on one another using the `std.Build.Module.addImport` function.
     // This is what allows Zig source code to use `@import("foo")` where 'foo' is not a

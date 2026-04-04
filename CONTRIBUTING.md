@@ -33,7 +33,7 @@ We are committed to providing a welcoming and inspiring community for all. Pleas
 
 ### Building from Source
 ```bash
-git clone https://github.com/yourusername/elba.git
+git clone https://github.com/powencu/elba.git
 cd elba
 zig build
 ```
