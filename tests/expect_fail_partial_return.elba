@@ -1,0 +1,6 @@
+// Expected to fail: not every path returns an integer.
+fn partial(flag: bool) -> int {
+    if (flag) {
+        return 1;
+    }
+}

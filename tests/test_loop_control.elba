@@ -1,0 +1,38 @@
+// Loop control must target the nearest enclosing loop.
+let total: int = 0;
+
+for (outer in 1..=3) {
+    for (inner in 1..=4) {
+        if (inner == 2) {
+            continue;
+        }
+        if (inner == 4) {
+            break;
+        }
+        total = total + outer;
+    }
+}
+
+let counter: int = 0;
+while (true) {
+    counter = counter + 1;
+    if (counter < 3) {
+        continue;
+    }
+    break;
+}
+
+let descending: int = 0;
+for (value in 5..=1) {
+    if (value == 4) {
+        continue;
+    }
+    if (value == 2) {
+        break;
+    }
+    descending = descending + value;
+}
+
+println(int_to_str(total));
+println(int_to_str(counter));
+println(int_to_str(descending));

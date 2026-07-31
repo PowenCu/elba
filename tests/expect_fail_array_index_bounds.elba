@@ -1,0 +1,3 @@
+// Expected to fail at runtime in every backend.
+const values: []int = [1, 2, 3];
+println(int_to_str(values[-1]));

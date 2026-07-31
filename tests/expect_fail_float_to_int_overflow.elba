@@ -1,0 +1,2 @@
+// Conversion fails when the value cannot fit in a signed 64-bit integer.
+println(int_to_str(float_to_int(str_to_float("1e20"))));

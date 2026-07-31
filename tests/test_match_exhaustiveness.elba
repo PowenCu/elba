@@ -1,0 +1,31 @@
+const negative: str = match (-5) {
+    -5 => "exact",
+    _ => "other"
+};
+println(negative);
+
+const signed_range: str = match (-2) {
+    -10..0 => "negative",
+    0..10 => "small",
+    _ => "large"
+};
+println(signed_range);
+
+const exhaustive: str = match (42) {
+    -9223372036854775808..0 => "negative",
+    0..=9223372036854775807 => "nonnegative"
+};
+println(exhaustive);
+
+const word: str = str_concat("mat", "ch");
+const string_match: str = match (word) {
+    "match" => "string",
+    _ => "other"
+};
+println(string_match);
+
+const decimal_match: str = match (-2.5) {
+    -2.5 => "float",
+    _ => "other"
+};
+println(decimal_match);

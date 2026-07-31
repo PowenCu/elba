@@ -2,12 +2,11 @@ const std = @import("std");
 const Expr = @import("../frontend/ast.zig").Expr;
 const Stmt = @import("../frontend/ast.zig").Stmt;
 const Value = @import("../frontend/ast.zig").Value;
-
-// Thread-local return value for early function returns
-threadlocal var return_value: ?Value = null;
+const Type = @import("../frontend/ast.zig").Type;
+const checked_int = @import("checked_int.zig");
 
 // Builtin function signature
-pub const BuiltinFn = *const fn (allocator: std.mem.Allocator, args: []Value) error{ UndefinedVariable, OutOfMemory, EarlyReturn, TypeError, IndexOutOfBounds, InvalidArguments }!Value;
+pub const BuiltinFn = *const fn (allocator: std.mem.Allocator, args: []Value) error{ UndefinedVariable, OutOfMemory, EarlyReturn, BreakLoop, ContinueLoop, TypeError, IndexOutOfBounds, InvalidArguments }!Value;
 
 pub const FnValue = struct {
     parameters: []Stmt.Parameter,
@@ -45,6 +44,8 @@ pub const Environment = struct {
     struct_methods: std.StringHashMap(StructMethods), // Indexed by struct name
     generic_structs: std.StringHashMap(GenericStructTemplate),
     parent: ?*Environment,
+    function_scope: bool,
+    return_value: ?Value,
 
     pub fn init(allocator: std.mem.Allocator) Environment {
         return .{
@@ -57,6 +58,8 @@ pub const Environment = struct {
             .struct_methods = std.StringHashMap(StructMethods).init(allocator),
             .generic_structs = std.StringHashMap(GenericStructTemplate).init(allocator),
             .parent = null,
+            .function_scope = false,
+            .return_value = null,
         };
     }
 
@@ -71,7 +74,15 @@ pub const Environment = struct {
             .struct_methods = std.StringHashMap(StructMethods).init(allocator),
             .generic_structs = std.StringHashMap(GenericStructTemplate).init(allocator),
             .parent = parent,
+            .function_scope = false,
+            .return_value = null,
         };
+    }
+
+    pub fn initFunctionScoped(allocator: std.mem.Allocator, parent: *Environment) Environment {
+        var environment = initScoped(allocator, parent);
+        environment.function_scope = true;
+        return environment;
     }
 
     pub fn deinit(self: *Environment) void {
@@ -125,6 +136,15 @@ pub const Environment = struct {
             return parent.get(name);
         }
         return null;
+    }
+
+    pub fn setReturnValue(self: *Environment, value: Value) !void {
+        if (self.function_scope) {
+            self.return_value = value;
+            return;
+        }
+        if (self.parent) |parent| return parent.setReturnValue(value);
+        return error.EarlyReturn;
     }
 
     pub fn setFn(self: *Environment, name: []const u8, fn_value: FnValue) !void {
@@ -182,11 +202,11 @@ pub const Environment = struct {
     }
 };
 
-pub fn evalStmt(stmt: *const Stmt, env: *Environment) error{ UndefinedVariable, OutOfMemory, EarlyReturn, TypeError, IndexOutOfBounds, InvalidArguments }!void {
+pub fn evalStmt(stmt: *const Stmt, env: *Environment) error{ UndefinedVariable, OutOfMemory, EarlyReturn, BreakLoop, ContinueLoop, TypeError, IndexOutOfBounds, InvalidArguments, IntegerOverflow, DivisionByZero, NegativeExponent }!void {
     switch (stmt.*) {
         .const_decl, .let_decl => |decl| {
             const value = try evalExpr(decl.value, env);
-            try env.set(decl.name, value);
+            try env.setLocal(decl.name, value);
         },
         .type_alias => {
             // Type aliases are handled at compile time, no runtime action needed
@@ -230,19 +250,24 @@ pub fn evalStmt(stmt: *const Stmt, env: *Environment) error{ UndefinedVariable, 
                 try env.struct_methods.put(decl.name, .{ .methods = methods });
             }
         },
-        .return_stmt => |expr| {
+        .return_stmt => |maybe_expr| {
             // Evaluate the return expression and store it
-            const value = try evalExpr(expr, env);
-            return_value = value;
+            const value = if (maybe_expr) |expr|
+                try evalExpr(expr, env)
+            else
+                Value{ .unit = {} };
+            try env.setReturnValue(value);
             return error.EarlyReturn;
         },
+        .break_stmt => return error.BreakLoop,
+        .continue_stmt => return error.ContinueLoop,
         .expr_stmt => |expr| {
             _ = try evalExpr(expr, env);
         },
     }
 }
 
-pub fn evalExpr(expr: *const Expr, env: *Environment) error{ UndefinedVariable, OutOfMemory, EarlyReturn, TypeError, IndexOutOfBounds, InvalidArguments }!Value {
+pub fn evalExpr(expr: *const Expr, env: *Environment) error{ UndefinedVariable, OutOfMemory, EarlyReturn, BreakLoop, ContinueLoop, TypeError, IndexOutOfBounds, InvalidArguments, IntegerOverflow, DivisionByZero, NegativeExponent }!Value {
     switch (expr.*) {
         .int_literal => |val| return Value{ .int = val },
         .float_literal => |val| return Value{ .float = val },
@@ -265,12 +290,25 @@ pub fn evalExpr(expr: *const Expr, env: *Environment) error{ UndefinedVariable, 
                 },
                 .negate => {
                     if (operand == .int) {
-                        return Value{ .int = -operand.int };
+                        return Value{ .int = try checked_int.neg(operand.int) };
                     } else {
                         return Value{ .float = -operand.float };
                     }
                 },
             }
+        },
+        .optional_unwrap => |optional_expr| {
+            const value = try evalExpr(optional_expr, env);
+            if (value == .null_value) {
+                std.debug.print("Runtime error: Cannot unwrap null\n", .{});
+                return error.TypeError;
+            }
+            return value;
+        },
+        .optional_coalesce => |coalesce| {
+            const value = try evalExpr(coalesce.optional, env);
+            if (value != .null_value) return value;
+            return try evalExpr(coalesce.fallback, env);
         },
         .binary => |bin| {
             const left = try evalExpr(bin.left, env);
@@ -286,7 +324,7 @@ pub fn evalExpr(expr: *const Expr, env: *Environment) error{ UndefinedVariable, 
 
                     // Handle int operations
                     if (left == .int and right == .int) {
-                        return Value{ .int = left.int + right.int };
+                        return Value{ .int = try checked_int.add(left.int, right.int) };
                     }
 
                     // Handle float operations (coerce int to float)
@@ -298,11 +336,11 @@ pub fn evalExpr(expr: *const Expr, env: *Environment) error{ UndefinedVariable, 
                     // Handle int operations
                     if (left == .int and right == .int) {
                         const result = switch (bin.op) {
-                            .sub => left.int - right.int,
-                            .mul => left.int * right.int,
-                            .div => @divTrunc(left.int, right.int),
-                            .mod => @mod(left.int, right.int),
-                            .pow => std.math.pow(i64, left.int, @intCast(right.int)),
+                            .sub => try checked_int.sub(left.int, right.int),
+                            .mul => try checked_int.mul(left.int, right.int),
+                            .div => try checked_int.div(left.int, right.int),
+                            .mod => try checked_int.mod(left.int, right.int),
+                            .pow => try checked_int.pow(left.int, right.int),
                             else => unreachable,
                         };
                         return Value{ .int = result };
@@ -323,38 +361,10 @@ pub fn evalExpr(expr: *const Expr, env: *Environment) error{ UndefinedVariable, 
                     return Value{ .float = result };
                 },
                 .equal => {
-                    // Handle null comparisons first
-                    if (left == .null_value or right == .null_value) {
-                        return Value{ .bool = (left == .null_value and right == .null_value) };
-                    }
-                    const result = switch (left) {
-                        .int => |l| right == .int and l == right.int,
-                        .float => |l| right == .float and l == right.float,
-                        .string => |l| right == .string and std.mem.eql(u8, l, right.string),
-                        .bool => |l| right == .bool and l == right.bool,
-                        .unit => right == .unit,
-                        .null_value => unreachable, // Already handled
-                        .struct_instance => false, // Struct equality not implemented
-                        .array => false, // Array equality not implemented
-                    };
-                    return Value{ .bool = result };
+                    return Value{ .bool = valuesEqual(left, right) };
                 },
                 .not_equal => {
-                    // Handle null comparisons first
-                    if (left == .null_value or right == .null_value) {
-                        return Value{ .bool = !(left == .null_value and right == .null_value) };
-                    }
-                    const result = switch (left) {
-                        .int => |l| right != .int or l != right.int,
-                        .float => |l| right != .float or l != right.float,
-                        .string => |l| right != .string or !std.mem.eql(u8, l, right.string),
-                        .bool => |l| right != .bool or l != right.bool,
-                        .unit => right != .unit,
-                        .null_value => unreachable, // Already handled
-                        .struct_instance => true, // Struct equality not implemented
-                        .array => true, // Array equality not implemented
-                    };
-                    return Value{ .bool = result };
+                    return Value{ .bool = !valuesEqual(left, right) };
                 },
                 .less => {
                     if (left == .int and right == .int) {
@@ -427,7 +437,11 @@ pub fn evalExpr(expr: *const Expr, env: *Environment) error{ UndefinedVariable, 
                 if (!condition.bool) {
                     break;
                 }
-                _ = try evalExpr(while_expr.body, env);
+                _ = evalExpr(while_expr.body, env) catch |err| switch (err) {
+                    error.BreakLoop => break,
+                    error.ContinueLoop => continue,
+                    else => return err,
+                };
             }
             return Value{ .unit = {} };
         },
@@ -463,37 +477,71 @@ pub fn evalExpr(expr: *const Expr, env: *Environment) error{ UndefinedVariable, 
 
                 if (start <= end) {
                     if (for_expr.range_inclusive) {
-                        while (i <= end) : (i += 1) {
+                        while (i <= end) {
                             try scoped_env.setLocal(for_expr.iterator, Value{ .int = i });
-                            _ = try evalExpr(for_expr.body, &scoped_env);
+                            var break_loop = false;
+                            _ = evalExpr(for_expr.body, &scoped_env) catch |err| switch (err) {
+                                error.BreakLoop => blk: {
+                                    break_loop = true;
+                                    break :blk Value{ .unit = {} };
+                                },
+                                error.ContinueLoop => Value{ .unit = {} },
+                                else => return err,
+                            };
+                            if (break_loop or i == end) break;
+                            i = try checked_int.add(i, 1);
                         }
                     } else {
-                        while (i < end) : (i += 1) {
+                        while (i < end) {
                             try scoped_env.setLocal(for_expr.iterator, Value{ .int = i });
-                            _ = try evalExpr(for_expr.body, &scoped_env);
+                            _ = evalExpr(for_expr.body, &scoped_env) catch |err| switch (err) {
+                                error.BreakLoop => break,
+                                error.ContinueLoop => Value{ .unit = {} },
+                                else => return err,
+                            };
+                            i = try checked_int.add(i, 1);
                         }
                     }
                 } else {
                     if (for_expr.range_inclusive) {
-                        while (i >= end) : (i -= 1) {
+                        while (i >= end) {
                             try scoped_env.setLocal(for_expr.iterator, Value{ .int = i });
-                            _ = try evalExpr(for_expr.body, &scoped_env);
+                            var break_loop = false;
+                            _ = evalExpr(for_expr.body, &scoped_env) catch |err| switch (err) {
+                                error.BreakLoop => blk: {
+                                    break_loop = true;
+                                    break :blk Value{ .unit = {} };
+                                },
+                                error.ContinueLoop => Value{ .unit = {} },
+                                else => return err,
+                            };
+                            if (break_loop or i == end) break;
+                            i = try checked_int.sub(i, 1);
                         }
                     } else {
-                        while (i > end) : (i -= 1) {
+                        while (i > end) {
                             try scoped_env.setLocal(for_expr.iterator, Value{ .int = i });
-                            _ = try evalExpr(for_expr.body, &scoped_env);
+                            _ = evalExpr(for_expr.body, &scoped_env) catch |err| switch (err) {
+                                error.BreakLoop => break,
+                                error.ContinueLoop => Value{ .unit = {} },
+                                else => return err,
+                            };
+                            i = try checked_int.sub(i, 1);
                         }
                     }
                 }
             } else {
                 // Array-based for loop
                 if (iterable_value != .array) return error.TypeError;
-                const array = iterable_value.array;
+                const array = iterable_value.array.elements;
 
                 for (array) |item| {
                     try scoped_env.setLocal(for_expr.iterator, item);
-                    _ = try evalExpr(for_expr.body, &scoped_env);
+                    _ = evalExpr(for_expr.body, &scoped_env) catch |err| switch (err) {
+                        error.BreakLoop => break,
+                        error.ContinueLoop => continue,
+                        else => return err,
+                    };
                 }
             }
 
@@ -558,13 +606,13 @@ pub fn evalExpr(expr: *const Expr, env: *Environment) error{ UndefinedVariable, 
                 return error.TypeError;
             }
 
-            const index: usize = @intCast(index_value.int);
-            if (index >= array_value.array.len) {
+            if (index_value.int < 0 or index_value.int >= array_value.array.elements.len) {
                 return error.IndexOutOfBounds;
             }
 
             // Modify the array element
-            array_value.array[index] = new_value;
+            const index: usize = @intCast(index_value.int);
+            array_value.array.elements[index] = new_value;
             return Value{ .unit = {} };
         },
         .fn_call => |call| {
@@ -608,7 +656,7 @@ pub fn evalExpr(expr: *const Expr, env: *Environment) error{ UndefinedVariable, 
             };
 
             // Create new environment for function execution
-            var fn_env = Environment.initScoped(env.allocator, env);
+            var fn_env = Environment.initFunctionScoped(env.allocator, env);
             defer fn_env.deinit();
 
             // Bind parameters to arguments
@@ -622,10 +670,7 @@ pub fn evalExpr(expr: *const Expr, env: *Environment) error{ UndefinedVariable, 
                 return result;
             } else |err| {
                 if (err == error.EarlyReturn) {
-                    // Return the stored return value
-                    const ret_val = return_value.?;
-                    return_value = null; // Clear for next use
-                    return ret_val;
+                    return fn_env.return_value orelse Value{ .unit = {} };
                 } else {
                     return err;
                 }
@@ -647,6 +692,7 @@ pub fn evalExpr(expr: *const Expr, env: *Environment) error{ UndefinedVariable, 
             // but at runtime we just need the type name for method lookup
             return Value{ .struct_instance = .{
                 .type_name = init.type_name,
+                .type_args = init.type_args,
                 .fields = fields,
             } };
         },
@@ -683,7 +729,7 @@ pub fn evalExpr(expr: *const Expr, env: *Environment) error{ UndefinedVariable, 
             };
 
             // Create a new environment for method execution
-            var method_env = Environment.initScoped(env.allocator, env);
+            var method_env = Environment.initFunctionScoped(env.allocator, env);
             defer method_env.deinit();
 
             // Bind 'self' parameter to the receiver value
@@ -696,20 +742,12 @@ pub fn evalExpr(expr: *const Expr, env: *Environment) error{ UndefinedVariable, 
             }
 
             // Execute method body
-            const saved_return_value = return_value;
-            return_value = null;
-
             const result = evalExpr(method.body, &method_env) catch |err| {
                 if (err == error.EarlyReturn) {
-                    const ret_val = return_value orelse Value{ .unit = {} };
-                    return_value = saved_return_value;
-                    return ret_val;
+                    return method_env.return_value orelse Value{ .unit = {} };
                 }
                 return err;
             };
-
-            // Restore previous return value context
-            return_value = saved_return_value;
             return result;
         },
         .array_literal => |literal| {
@@ -720,7 +758,10 @@ pub fn evalExpr(expr: *const Expr, env: *Environment) error{ UndefinedVariable, 
                 elements[i] = try evalExpr(elem_expr, env);
             }
 
-            return Value{ .array = elements };
+            return Value{ .array = .{
+                .elements = elements,
+                .element_type = literal.resolved_element_type.*,
+            } };
         },
         .array_access => |access| {
             // Evaluate the array and index
@@ -738,7 +779,7 @@ pub fn evalExpr(expr: *const Expr, env: *Environment) error{ UndefinedVariable, 
             }
 
             const index = index_value.int;
-            const array = array_value.array;
+            const array = array_value.array.elements;
 
             // Bounds checking
             if (index < 0 or index >= array.len) {
@@ -753,7 +794,7 @@ pub fn evalExpr(expr: *const Expr, env: *Environment) error{ UndefinedVariable, 
             const value = try evalExpr(check.expr, env);
 
             // Check the runtime type against the expected type
-            const matches = switch (check.check_type) {
+            const matches = check.static_result.* orelse switch (check.resolved_type.* orelse check.check_type) {
                 .int => value == .int,
                 .float => value == .float,
                 .string => value == .string,
@@ -766,8 +807,26 @@ pub fn evalExpr(expr: *const Expr, env: *Environment) error{ UndefinedVariable, 
                         break :blk false;
                     }
                 },
-                // For complex types, we can't do perfect runtime checking without more info
-                // For now, just return false for complex types
+                .generic_instance => |expected| blk: {
+                    if (value != .struct_instance or
+                        !std.mem.eql(u8, value.struct_instance.type_name, expected.base_type) or
+                        value.struct_instance.type_args.len != expected.type_args.len)
+                    {
+                        break :blk false;
+                    }
+                    for (value.struct_instance.type_args, expected.type_args) |actual_arg, expected_arg| {
+                        if (!actual_arg.eql(expected_arg)) break :blk false;
+                    }
+                    break :blk true;
+                },
+                .array => |expected_element| blk: {
+                    if (value != .array) break :blk false;
+                    if (value.array.element_type) |actual_element| {
+                        break :blk actual_element.eql(expected_element.*);
+                    }
+                    const source_type = check.resolved_source_type.* orelse break :blk false;
+                    break :blk sourceMatchesArrayType(source_type, expected_element.*);
+                },
                 else => false,
             };
 
@@ -776,6 +835,61 @@ pub fn evalExpr(expr: *const Expr, env: *Environment) error{ UndefinedVariable, 
             return Value{ .bool = result };
         },
     }
+}
+
+fn sourceMatchesArrayType(source_type: Type, expected_element: Type) bool {
+    return switch (source_type) {
+        .array => |actual_element| actual_element.eql(expected_element),
+        .optional => |inner| sourceMatchesArrayType(inner.*, expected_element),
+        .union_type => |members| blk: {
+            var array_count: usize = 0;
+            var matches = false;
+            for (members) |member| {
+                if (member == .array) {
+                    array_count += 1;
+                    if (member.array.eql(expected_element)) matches = true;
+                }
+            }
+            break :blk array_count == 1 and matches;
+        },
+        else => false,
+    };
+}
+
+fn valuesEqual(left: Value, right: Value) bool {
+    return switch (left) {
+        .int => |value| right == .int and value == right.int,
+        .float => |value| right == .float and value == right.float,
+        .string => |value| right == .string and std.mem.eql(u8, value, right.string),
+        .bool => |value| right == .bool and value == right.bool,
+        .unit => right == .unit,
+        .null_value => right == .null_value,
+        .array => |array_value| blk: {
+            if (right != .array or array_value.elements.len != right.array.elements.len) break :blk false;
+            for (array_value.elements, right.array.elements) |left_item, right_item| {
+                if (!valuesEqual(left_item, right_item)) break :blk false;
+            }
+            break :blk true;
+        },
+        .struct_instance => |instance| blk: {
+            if (right != .struct_instance or
+                !std.mem.eql(u8, instance.type_name, right.struct_instance.type_name) or
+                instance.type_args.len != right.struct_instance.type_args.len or
+                instance.fields.count() != right.struct_instance.fields.count())
+            {
+                break :blk false;
+            }
+            for (instance.type_args, right.struct_instance.type_args) |left_arg, right_arg| {
+                if (!left_arg.eql(right_arg)) break :blk false;
+            }
+            var fields = instance.fields.iterator();
+            while (fields.next()) |entry| {
+                const right_value = right.struct_instance.fields.get(entry.key_ptr.*) orelse break :blk false;
+                if (!valuesEqual(entry.value_ptr.*, right_value)) break :blk false;
+            }
+            break :blk true;
+        },
+    };
 }
 
 // ============================================================================
@@ -834,7 +948,8 @@ fn builtin_print(allocator: std.mem.Allocator, args: []Value) !Value {
                 if (!first) std.debug.print(", ", .{});
                 first = false;
                 std.debug.print("{s}: ", .{entry.key_ptr.*});
-                // Recursive print would be better, but this works for now
+                // Aggregate output is outside the typed print API; keep this
+                // fallback compact for interpreter diagnostics.
                 switch (entry.value_ptr.*) {
                     .int => |v| std.debug.print("{d}", .{v}),
                     .float => |v| std.debug.print("{d}", .{v}),
@@ -845,9 +960,9 @@ fn builtin_print(allocator: std.mem.Allocator, args: []Value) !Value {
             }
             std.debug.print("}}", .{});
         },
-        .array => |elements| {
+        .array => |array_value| {
             std.debug.print("[", .{});
-            for (elements, 0..) |elem, i| {
+            for (array_value.elements, 0..) |elem, i| {
                 if (i > 0) std.debug.print(", ", .{});
                 switch (elem) {
                     .int => |v| std.debug.print("{d}", .{v}),
@@ -912,7 +1027,10 @@ fn builtin_abs(allocator: std.mem.Allocator, args: []Value) !Value {
     if (args.len != 1) return error.InvalidArguments;
 
     switch (args[0]) {
-        .int => |val| return Value{ .int = if (val < 0) -val else val },
+        .int => |val| {
+            if (val == std.math.minInt(i64)) return error.InvalidArguments;
+            return Value{ .int = if (val < 0) -val else val };
+        },
         .float => |val| return Value{ .float = if (val < 0) -val else val },
         else => return error.TypeError,
     }
@@ -997,7 +1115,7 @@ fn builtin_array_len(allocator: std.mem.Allocator, args: []Value) !Value {
     if (args.len != 1) return error.InvalidArguments;
     if (args[0] != .array) return error.TypeError;
 
-    const len: i64 = @intCast(args[0].array.len);
+    const len: i64 = @intCast(args[0].array.elements.len);
     return Value{ .int = len };
 }
 
@@ -1007,30 +1125,25 @@ fn builtin_array_push(allocator: std.mem.Allocator, args: []Value) !Value {
     if (args[0] != .array) return error.TypeError;
 
     const old_array = args[0].array;
-    var new_array = try allocator.alloc(Value, old_array.len + 1);
-    @memcpy(new_array[0..old_array.len], old_array);
-    new_array[old_array.len] = args[1];
+    var new_array = try allocator.alloc(Value, old_array.elements.len + 1);
+    @memcpy(new_array[0..old_array.elements.len], old_array.elements);
+    new_array[old_array.elements.len] = args[1];
 
-    return Value{ .array = new_array };
+    return Value{ .array = .{ .elements = new_array, .element_type = old_array.element_type } };
 }
 
-// Pop element from array (returns [new_array, popped_value])
+// Remove the final element and return the shortened array.
 fn builtin_array_pop(allocator: std.mem.Allocator, args: []Value) !Value {
     if (args.len != 1) return error.InvalidArguments;
     if (args[0] != .array) return error.TypeError;
 
     const old_array = args[0].array;
-    if (old_array.len == 0) return error.IndexOutOfBounds;
+    if (old_array.elements.len == 0) return error.IndexOutOfBounds;
 
-    const new_array = try allocator.alloc(Value, old_array.len - 1);
-    @memcpy(new_array, old_array[0 .. old_array.len - 1]);
+    const new_array = try allocator.alloc(Value, old_array.elements.len - 1);
+    @memcpy(new_array, old_array.elements[0 .. old_array.elements.len - 1]);
 
-    // Return array with [new_array, popped_element]
-    var result = try allocator.alloc(Value, 2);
-    result[0] = Value{ .array = new_array };
-    result[1] = old_array[old_array.len - 1];
-
-    return Value{ .array = result };
+    return Value{ .array = .{ .elements = new_array, .element_type = old_array.element_type } };
 }
 
 // Array slice
@@ -1039,17 +1152,18 @@ fn builtin_array_slice(allocator: std.mem.Allocator, args: []Value) !Value {
     if (args[0] != .array or args[1] != .int or args[2] != .int) return error.TypeError;
 
     const arr = args[0].array;
-    const start: usize = @intCast(args[1].int);
-    const end: usize = @intCast(args[2].int);
-
-    if (start > arr.len or end > arr.len or start > end) {
+    const start_value = args[1].int;
+    const end_value = args[2].int;
+    if (start_value < 0 or end_value < start_value or end_value > arr.elements.len) {
         return error.IndexOutOfBounds;
     }
+    const start: usize = @intCast(start_value);
+    const end: usize = @intCast(end_value);
 
     const slice = try allocator.alloc(Value, end - start);
-    @memcpy(slice, arr[start..end]);
+    @memcpy(slice, arr.elements[start..end]);
 
-    return Value{ .array = slice };
+    return Value{ .array = .{ .elements = slice, .element_type = arr.element_type } };
 }
 
 // String split
@@ -1068,7 +1182,10 @@ fn builtin_str_split(allocator: std.mem.Allocator, args: []Value) !Value {
         try parts.append(allocator, Value{ .string = part });
     }
 
-    return Value{ .array = try parts.toOwnedSlice(allocator) };
+    return Value{ .array = .{
+        .elements = try parts.toOwnedSlice(allocator),
+        .element_type = .string,
+    } };
 }
 
 // String trim
@@ -1108,6 +1225,7 @@ fn builtin_str_to_float(allocator: std.mem.Allocator, args: []Value) !Value {
     if (args[0] != .string) return error.TypeError;
 
     const value = std.fmt.parseFloat(f64, args[0].string) catch return error.TypeError;
+    if (!std.math.isFinite(value)) return error.TypeError;
     return Value{ .float = value };
 }
 
@@ -1136,6 +1254,9 @@ fn builtin_float_to_int(allocator: std.mem.Allocator, args: []Value) !Value {
     if (args.len != 1) return error.InvalidArguments;
     if (args[0] != .float) return error.TypeError;
 
+    const lower: f64 = @floatFromInt(std.math.minInt(i64));
+    const upper = -lower;
+    if (!std.math.isFinite(args[0].float) or args[0].float < lower or args[0].float >= upper) return error.TypeError;
     const value: i64 = @intFromFloat(args[0].float);
     return Value{ .int = value };
 }

@@ -1,0 +1,2 @@
+// Parsing outside the signed 64-bit range is a runtime error.
+println(int_to_str(str_to_int("9223372036854775808")));

@@ -163,20 +163,22 @@ Examples Tested:
 
 ## Recommendations for Next Steps
 
+### Completed Follow-up
+- ✅ **String Escape Sequences** - `\n`, `\r`, `\t`, `\\`, and `\"` are decoded across expressions, match patterns, and module paths, with invalid-literal diagnostics.
+- ✅ **Match Diagnostics and Finite Exhaustiveness** - Signed numeric patterns, duplicate/unreachable-arm checks, exhaustive booleans, and full-domain integer interval coverage are verified across every backend.
+- ✅ **Exact Array Identity and Context** - `is []T` checks full nested types, and expected array types propagate through declarations, calls, returns, control flow, assignments, fields, methods, and helpers.
+
 ### High Priority
-1. **Add String Escape Sequences** - `\n`, `\t`, `\\`, etc. currently not processed
-2. **Module Error Handling** - Improve error messages when modules not found
-3. **Add Garbage Collection** - Currently requires manual memory management
+1. **LLVM SSA Joins** - Replace the remaining simulated value-stack joins with explicit typed merge values
+2. **Parser Error Recovery** - Report multiple independent syntax errors in one compiler run
 
 ### Medium Priority
-1. **Implement Range Type** - Marked TODO in parser, needed for range-based loops
-2. **Parser Error Recovery** - Report multiple errors at once instead of stopping at first
-3. **Add break/continue** - Loop control flow statements
+1. **Memory Reclamation** - Replace process-lifetime native allocation tracking with a documented ownership or collection model
 
 ### Nice to Have
-1. **Add Array Utilities** - Built-in functions like `length()`, `first()`, `last()`
-2. **String Interning** - Reduce memory overhead for string literals
-3. **Architecture Documentation** - Detailed guide to compiler structure
+1. **More Array Utilities** - Add helpers such as `first`, `last`, and searching
+2. **String Interning** - Reduce memory overhead for repeated string values
+3. **Language Tooling** - Add formatter and language-server support
 
 ## Conclusion
 

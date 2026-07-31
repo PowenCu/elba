@@ -1,5 +1,6 @@
 const std = @import("std");
 const ir = @import("ir.zig");
+const checked_int = @import("checked_int.zig");
 const Instruction = ir.Instruction;
 const Opcode = ir.Opcode;
 
@@ -314,7 +315,8 @@ pub const Optimizer = struct {
                     seq1_3.op == seq2_3.op)
                 {
                     // Found duplicate - could optimize by storing result
-                    // For now, just skip (more complex CSE needs SSA form)
+                    // Stack IR cannot safely reuse this expression without an
+                    // explicit value location, so leave it unchanged.
                     break;
                 }
                 j += 1;
@@ -379,7 +381,8 @@ fn isFoldableOp(op: Opcode) bool {
 
 /// Try to fold a constant operation
 fn tryFoldOperation(inst1: Instruction, inst2: Instruction, inst3: Instruction) ?Instruction {
-    // Only fold integer operations for now
+    // Integer folding is exact and checked; float operations remain in IR so
+    // every execution backend applies the same runtime semantics.
     if (inst1.op != .load_const_int or inst2.op != .load_const_int) {
         return null;
     }
@@ -388,11 +391,11 @@ fn tryFoldOperation(inst1: Instruction, inst2: Instruction, inst3: Instruction) 
     const b = inst2.operand1;
 
     const result: i64 = switch (inst3.op) {
-        .add => a + b,
-        .sub => a - b,
-        .mul => a * b,
-        .div => if (b != 0) @divTrunc(a, b) else return null,
-        .mod => if (b != 0) @mod(a, b) else return null,
+        .add => checked_int.add(a, b) catch return null,
+        .sub => checked_int.sub(a, b) catch return null,
+        .mul => checked_int.mul(a, b) catch return null,
+        .div => checked_int.div(a, b) catch return null,
+        .mod => checked_int.mod(a, b) catch return null,
         else => return null,
     };
 

@@ -1,0 +1,15 @@
+// Mutable aggregate assignments
+
+struct Point {
+    x: int;
+    y: int;
+}
+
+let point: Point = Point { x: 1; y: 2 };
+let values: []int = [10, 20, 30];
+
+point.x = 7;
+values[1] = 99;
+
+println(int_to_str(point.x));
+println(int_to_str(values[1]));

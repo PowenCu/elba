@@ -1,0 +1,49 @@
+// Scalar and string builtins supported consistently by every backend.
+
+println("=== Scalar Builtins ===");
+
+println(bool_to_str(true));
+println(bool_to_str(false));
+
+// print and println accept scalar values directly.
+print(42);
+print(" ");
+print(3.5);
+print(" ");
+println(true);
+
+const parsed_int: int = str_to_int("-42");
+println(int_to_str(parsed_int));
+
+const parsed_float: float = str_to_float("12.5");
+println(float_to_str(parsed_float));
+
+const converted_float: float = int_to_float(7);
+println(float_to_str(converted_float));
+
+const converted_int: int = float_to_int(9.75);
+println(int_to_str(converted_int));
+
+println(float_to_str(sqrt(81.0)));
+println(float_to_str(floor(4.75)));
+println(float_to_str(ceil(4.25)));
+
+println(int_to_str(abs(-5)));
+println(float_to_str(abs(-3.5)));
+println(int_to_str(min(4, 9)));
+println(int_to_str(max(4, 9)));
+println(float_to_str(min(4.5, 9.25)));
+println(float_to_str(max(4.5, 9.25)));
+
+fn scale(value: float) -> float {
+    return value * 2 + 0.5;
+}
+
+println(scale(3.0));
+
+println(str_substring("compiler", 0, 4));
+println(str_trim("  trimmed text\t"));
+println(bool_to_str(str_contains("Elba language", "language")));
+println(bool_to_str(str_contains("Elba language", "missing")));
+
+println("=== Scalar Builtins Complete ===");

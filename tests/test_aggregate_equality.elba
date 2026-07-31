@@ -1,0 +1,36 @@
+struct Point {
+    x: int;
+    y: int;
+}
+
+struct Record {
+    name: str;
+    point: Point;
+    values: []int;
+}
+
+const numbers: []int = [1, 2, 3];
+const same_numbers: []int = [1, 2, 3];
+const other_numbers: []int = [1, 2, 4];
+const short_numbers: []int = [1, 2];
+println(bool_to_str(numbers == same_numbers));
+println(bool_to_str(numbers != other_numbers));
+println(bool_to_str(numbers != short_numbers));
+
+const left: Record = Record {
+    name: str_concat("rec", "ord");
+    point: Point { x: 4; y: 5 };
+    values: [6, 7, 8];
+};
+const right: Record = Record {
+    name: "record";
+    point: Point { x: 4; y: 5 };
+    values: [6, 7, 8];
+};
+const changed: Record = Record {
+    name: "record";
+    point: Point { x: 4; y: 9 };
+    values: [6, 7, 8];
+};
+println(bool_to_str(left == right));
+println(bool_to_str(left != changed));

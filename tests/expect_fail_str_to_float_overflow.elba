@@ -1,0 +1,2 @@
+// Floating-point overflow is a runtime error rather than an infinity value.
+println(float_to_str(str_to_float("1e9999")));

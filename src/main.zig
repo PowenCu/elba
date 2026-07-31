@@ -217,6 +217,18 @@ fn runFile(allocator: std.mem.Allocator, file_path: []const u8, options: cli.Opt
                         std.debug.print("Error: Type mismatch at runtime\n", .{});
                         return err;
                     },
+                    error.IntegerOverflow => {
+                        std.debug.print("Error: Integer overflow\n", .{});
+                        return err;
+                    },
+                    error.DivisionByZero => {
+                        std.debug.print("Error: Division by zero\n", .{});
+                        return err;
+                    },
+                    error.NegativeExponent => {
+                        std.debug.print("Error: Integer exponent cannot be negative\n", .{});
+                        return err;
+                    },
                     else => return err,
                 }
             };
@@ -256,6 +268,65 @@ fn parseSource(allocator: std.mem.Allocator, source: []const u8, file_path: []co
     }
 
     return statements;
+}
+
+fn statementName(statement: Stmt) ?[]const u8 {
+    return switch (statement) {
+        .fn_decl => |decl| decl.name,
+        .const_decl => |decl| decl.name,
+        .let_decl => |decl| decl.name,
+        .struct_decl => |decl| decl.name,
+        .type_alias => |alias| alias.name,
+        else => null,
+    };
+}
+
+fn importSelects(import: Stmt.ImportStmt, statement: Stmt) bool {
+    const imports = import.imports orelse return true;
+    const name = statementName(statement) orelse return false;
+    for (imports) |import_name| {
+        if (std.mem.eql(u8, name, import_name)) return true;
+    }
+    return false;
+}
+
+fn appendExpandedImports(
+    allocator: std.mem.Allocator,
+    output: *std.ArrayList(Stmt),
+    statements: []const Stmt,
+    source_dir: []const u8,
+) !void {
+    for (statements) |statement| {
+        if (statement != .import_stmt) {
+            try output.append(allocator, statement);
+            continue;
+        }
+
+        const import = statement.import_stmt;
+        const module_statements = try loadModule(allocator, import.module_path, source_dir);
+        const module_path = try std.fs.path.join(allocator, &[_][]const u8{ source_dir, import.module_path });
+        const module_dir = std.fs.path.dirname(module_path) orelse source_dir;
+
+        for (module_statements) |module_statement| {
+            // Dependencies declared by the imported module must be expanded even
+            // when the outer import selects only one exported declaration.
+            if (module_statement == .import_stmt) {
+                try appendExpandedImports(allocator, output, &[_]Stmt{module_statement}, module_dir);
+            } else if (importSelects(import, module_statement)) {
+                try output.append(allocator, module_statement);
+            }
+        }
+    }
+}
+
+fn expandImports(
+    allocator: std.mem.Allocator,
+    statements: []const Stmt,
+    source_dir: []const u8,
+) !std.ArrayList(Stmt) {
+    var expanded = try std.ArrayList(Stmt).initCapacity(allocator, statements.len);
+    try appendExpandedImports(allocator, &expanded, statements, source_dir);
+    return expanded;
 }
 
 /// Type check all statements
@@ -303,7 +374,9 @@ fn compileFile(allocator: std.mem.Allocator, file_path: []const u8, options: cli
     }
 
     // Parse source into AST
-    const statements = try parseSource(ast_allocator, source, file_path);
+    const parsed_statements = try parseSource(ast_allocator, source, file_path);
+    const source_dir = std.fs.path.dirname(file_path) orelse ".";
+    const statements = try expandImports(ast_allocator, parsed_statements.items, source_dir);
 
     // Type check
     try typeCheckProgram(allocator, statements.items);
@@ -349,7 +422,15 @@ fn compileFile(allocator: std.mem.Allocator, file_path: []const u8, options: cli
         var ir_interp = try ir_interpreter.Interpreter.init(allocator, program, options.verbose);
         defer ir_interp.deinit();
 
-        try ir_interp.execute();
+        ir_interp.execute() catch |err| {
+            switch (err) {
+                error.IntegerOverflow => std.debug.print("Error: Integer overflow\n", .{}),
+                error.DivisionByZero => std.debug.print("Error: Division by zero\n", .{}),
+                error.NegativeExponent => std.debug.print("Error: Integer exponent cannot be negative\n", .{}),
+                else => {},
+            }
+            return err;
+        };
 
         if (options.verbose) {
             std.debug.print("✓ IR execution complete!\n", .{});

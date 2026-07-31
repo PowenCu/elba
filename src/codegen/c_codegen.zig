@@ -19,6 +19,7 @@ pub const CCodeGen = struct {
     uses_arrays: bool,
     uses_structs: bool,
     uses_floats: bool,
+    uses_tagged_values: bool,
     used_builtins: std.StringHashMap(bool),
 
     const BuiltinFunction = enum {
@@ -27,8 +28,20 @@ pub const CCodeGen = struct {
         str_len,
         str_concat,
         str_substring,
+        str_split,
+        str_trim,
+        str_contains,
+        str_to_int,
+        str_to_float,
         int_to_str,
         float_to_str,
+        bool_to_str,
+        int_to_float,
+        float_to_int,
+        array_len,
+        array_push,
+        array_pop,
+        array_slice,
         abs,
         sqrt,
         floor,
@@ -43,8 +56,20 @@ pub const CCodeGen = struct {
                 .{ "str_len", .str_len },
                 .{ "str_concat", .str_concat },
                 .{ "str_substring", .str_substring },
+                .{ "str_split", .str_split },
+                .{ "str_trim", .str_trim },
+                .{ "str_contains", .str_contains },
+                .{ "str_to_int", .str_to_int },
+                .{ "str_to_float", .str_to_float },
                 .{ "int_to_str", .int_to_str },
                 .{ "float_to_str", .float_to_str },
+                .{ "bool_to_str", .bool_to_str },
+                .{ "int_to_float", .int_to_float },
+                .{ "float_to_int", .float_to_int },
+                .{ "array_len", .array_len },
+                .{ "array_push", .array_push },
+                .{ "array_pop", .array_pop },
+                .{ "array_slice", .array_slice },
                 .{ "abs", .abs },
                 .{ "sqrt", .sqrt },
                 .{ "floor", .floor },
@@ -57,7 +82,31 @@ pub const CCodeGen = struct {
 
         pub fn usesStrings(self: BuiltinFunction) bool {
             return switch (self) {
-                .println, .print, .str_len, .str_concat, .str_substring, .int_to_str, .float_to_str => true,
+                .println, .print, .str_len, .str_concat, .str_substring, .str_split, .str_trim, .str_contains, .str_to_int, .str_to_float, .int_to_str, .float_to_str, .bool_to_str => true,
+                else => false,
+            };
+        }
+
+        pub fn usesFloats(self: BuiltinFunction) bool {
+            return switch (self) {
+                .str_to_float,
+                .float_to_str,
+                .int_to_float,
+                .float_to_int,
+                .sqrt,
+                .floor,
+                .ceil,
+                .abs,
+                .min,
+                .max,
+                => true,
+                else => false,
+            };
+        }
+
+        pub fn usesArrays(self: BuiltinFunction) bool {
+            return switch (self) {
+                .array_len, .array_push, .array_pop, .array_slice, .str_split => true,
                 else => false,
             };
         }
@@ -74,6 +123,7 @@ pub const CCodeGen = struct {
             .uses_arrays = false,
             .uses_structs = false,
             .uses_floats = false,
+            .uses_tagged_values = false,
             .used_builtins = std.StringHashMap(bool).init(allocator),
         };
     }
@@ -128,9 +178,37 @@ pub const CCodeGen = struct {
             for (func.instructions) |inst| {
                 switch (inst.op) {
                     .load_const_str => self.uses_strings = true,
-                    .load_const_float => self.uses_floats = true,
+                    .load_const_float, .pow => self.uses_floats = true,
+                    .add => {
+                        if (ir.decodeBinaryLeft(inst.operand3) == .string and
+                            ir.decodeBinaryRight(inst.operand3) == .string)
+                        {
+                            self.uses_strings = true;
+                            try self.used_builtins.put("str_concat", true);
+                        }
+                        if (ir.decodeBinaryLeft(inst.operand3) == .float or
+                            ir.decodeBinaryRight(inst.operand3) == .float)
+                        {
+                            self.uses_floats = true;
+                        }
+                    },
+                    .sub, .mul, .div, .mod, .eq, .neq, .lt, .lte, .gt, .gte => {
+                        if (ir.decodeBinaryLeft(inst.operand3) == .float or
+                            ir.decodeBinaryRight(inst.operand3) == .float)
+                        {
+                            self.uses_floats = true;
+                        }
+                    },
+                    .neg => if (ir.decodeValueType(inst.operand3) == .float) {
+                        self.uses_floats = true;
+                    },
                     .array_new, .array_get, .array_set => self.uses_arrays = true,
                     .struct_new, .field_get, .field_set => self.uses_structs = true,
+                    .optional_wrap, .optional_unwrap, .optional_is_null => self.uses_tagged_values = true,
+                    .type_check => {
+                        const checked_type = ir.decodeValueType(inst.operand3);
+                        if (checked_type == .optional or checked_type == .union_type) self.uses_tagged_values = true;
+                    },
                     .call => {
                         if (inst.string_data) |func_name| {
                             // Check if this is a builtin function
@@ -138,6 +216,12 @@ pub const CCodeGen = struct {
                                 try self.used_builtins.put(func_name, true);
                                 if (builtin.usesStrings()) {
                                     self.uses_strings = true;
+                                }
+                                if (builtin.usesFloats()) {
+                                    self.uses_floats = true;
+                                }
+                                if (builtin.usesArrays()) {
+                                    self.uses_arrays = true;
                                 }
                             }
                         }
@@ -165,10 +249,15 @@ pub const CCodeGen = struct {
         try self.writeLine("#include <stdlib.h>");
         try self.writeLine("#include <stdint.h>");
         try self.writeLine("#include <stdbool.h>");
-
-        // Only include string.h if strings are used
-        if (self.uses_strings) {
-            try self.writeLine("#include <string.h>");
+        try self.writeLine("#include <string.h>");
+        if (self.used_builtins.contains("str_trim") or
+            self.used_builtins.contains("str_to_int") or
+            self.used_builtins.contains("str_to_float"))
+        {
+            try self.writeLine("#include <ctype.h>");
+        }
+        if (self.used_builtins.contains("str_to_int") or self.used_builtins.contains("str_to_float")) {
+            try self.writeLine("#include <errno.h>");
         }
 
         // Only include math.h if math functions are used
@@ -200,31 +289,23 @@ pub const CCodeGen = struct {
         try self.writeLine("// Stack-Based VM");
         try self.writeLine("// ============================================");
         try self.writeLine("#define STACK_SIZE 4096");
-        try self.writeLine("typedef union {");
-        try self.writeLine("    ElbaInt i;");
-
-        if (self.uses_floats) {
-            try self.writeLine("    ElbaFloat f;");
-        }
-
-        try self.writeLine("    ElbaBool b;");
-
-        if (self.uses_strings) {
-            try self.writeLine("    ElbaString s;");
-        }
-
-        if (self.uses_arrays or self.uses_structs) {
-            try self.writeLine("    void* ptr;");
-        }
-
+        try self.writeLine("typedef struct {");
+        try self.writeLine("    uint64_t bits;");
         try self.writeLine("} StackValue;");
+        if (self.uses_tagged_values) {
+            try self.writeLine("typedef struct {");
+            try self.writeLine("    ElbaInt tag;");
+            try self.writeLine("    uint64_t bits;");
+            try self.writeLine("    const char* type_name;");
+            try self.writeLine("} ElbaTaggedValue;");
+        }
         try self.writeLine("");
         try self.writeLine("static StackValue stack[STACK_SIZE];");
         try self.writeLine("static int stack_top = 0;");
         try self.writeLine("");
 
         // Memory management (only if dynamic allocation is used)
-        if (self.uses_strings or self.uses_arrays or self.uses_structs) {
+        if (self.uses_strings or self.uses_arrays or self.uses_structs or self.uses_tagged_values) {
             try self.writeLine("// ============================================");
             try self.writeLine("// Memory Management");
             try self.writeLine("// ============================================");
@@ -282,75 +363,168 @@ pub const CCodeGen = struct {
         try self.writeLine("// Stack manipulation");
         try self.writeLine("static inline void elba_push_int(ElbaInt value) {");
         try self.writeLine("    elba_check_stack_overflow();");
-        try self.writeLine("    stack[stack_top++].i = value;");
+        try self.writeLine("    StackValue slot;");
+        try self.writeLine("    memcpy(&slot.bits, &value, sizeof(value));");
+        try self.writeLine("    stack[stack_top++] = slot;");
         try self.writeLine("}");
         try self.writeLine("");
 
         if (self.uses_floats) {
             try self.writeLine("static inline void elba_push_float(ElbaFloat value) {");
             try self.writeLine("    elba_check_stack_overflow();");
-            try self.writeLine("    stack[stack_top++].f = value;");
+            try self.writeLine("    StackValue slot;");
+            try self.writeLine("    memcpy(&slot.bits, &value, sizeof(value));");
+            try self.writeLine("    stack[stack_top++] = slot;");
             try self.writeLine("}");
             try self.writeLine("");
         }
 
         try self.writeLine("static inline void elba_push_bool(ElbaBool value) {");
         try self.writeLine("    elba_check_stack_overflow();");
-        try self.writeLine("    stack[stack_top++].b = value;");
+        try self.writeLine("    stack[stack_top++].bits = value ? 1u : 0u;");
         try self.writeLine("}");
         try self.writeLine("");
 
         if (self.uses_strings) {
             try self.writeLine("static inline void elba_push_string(ElbaString value) {");
             try self.writeLine("    elba_check_stack_overflow();");
-            try self.writeLine("    stack[stack_top++].s = value;");
+            try self.writeLine("    stack[stack_top++].bits = (uint64_t)(uintptr_t)value;");
             try self.writeLine("}");
             try self.writeLine("");
         }
 
-        if (self.uses_arrays or self.uses_structs) {
+        if (self.uses_arrays or self.uses_structs or self.uses_tagged_values) {
             try self.writeLine("static inline void elba_push_ptr(void* value) {");
             try self.writeLine("    elba_check_stack_overflow();");
-            try self.writeLine("    stack[stack_top++].ptr = value;");
+            try self.writeLine("    stack[stack_top++].bits = (uint64_t)(uintptr_t)value;");
             try self.writeLine("}");
             try self.writeLine("");
         }
 
         try self.writeLine("static inline ElbaInt elba_pop_int(void) {");
         try self.writeLine("    elba_check_stack_underflow();");
-        try self.writeLine("    return stack[--stack_top].i;");
+        try self.writeLine("    StackValue slot = stack[--stack_top];");
+        try self.writeLine("    ElbaInt value;");
+        try self.writeLine("    memcpy(&value, &slot.bits, sizeof(value));");
+        try self.writeLine("    return value;");
         try self.writeLine("}");
         try self.writeLine("");
 
         if (self.uses_floats) {
             try self.writeLine("static inline ElbaFloat elba_pop_float(void) {");
             try self.writeLine("    elba_check_stack_underflow();");
-            try self.writeLine("    return stack[--stack_top].f;");
+            try self.writeLine("    StackValue slot = stack[--stack_top];");
+            try self.writeLine("    ElbaFloat value;");
+            try self.writeLine("    memcpy(&value, &slot.bits, sizeof(value));");
+            try self.writeLine("    return value;");
             try self.writeLine("}");
             try self.writeLine("");
         }
 
         try self.writeLine("static inline ElbaBool elba_pop_bool(void) {");
         try self.writeLine("    elba_check_stack_underflow();");
-        try self.writeLine("    return stack[--stack_top].b;");
+        try self.writeLine("    return stack[--stack_top].bits != 0;");
         try self.writeLine("}");
         try self.writeLine("");
 
         if (self.uses_strings) {
             try self.writeLine("static inline ElbaString elba_pop_string(void) {");
             try self.writeLine("    elba_check_stack_underflow();");
-            try self.writeLine("    return stack[--stack_top].s;");
+            try self.writeLine("    return (ElbaString)(uintptr_t)stack[--stack_top].bits;");
             try self.writeLine("}");
             try self.writeLine("");
         }
 
-        if (self.uses_arrays or self.uses_structs) {
+        if (self.uses_arrays or self.uses_structs or self.uses_tagged_values) {
             try self.writeLine("static inline void* elba_pop_ptr(void) {");
             try self.writeLine("    elba_check_stack_underflow();");
-            try self.writeLine("    return stack[--stack_top].ptr;");
+            try self.writeLine("    return (void*)(uintptr_t)stack[--stack_top].bits;");
             try self.writeLine("}");
             try self.writeLine("");
         }
+
+        if (self.uses_tagged_values) {
+            try self.write("#define ELBA_TAG_FLOAT ");
+            try self.writeInt(@intFromEnum(ValueType.float));
+            try self.writeLine("");
+            try self.write("#define ELBA_TAG_STRING ");
+            try self.writeInt(@intFromEnum(ValueType.string));
+            try self.writeLine("");
+            try self.write("#define ELBA_TAG_OPTIONAL ");
+            try self.writeInt(@intFromEnum(ValueType.optional));
+            try self.writeLine("");
+            try self.write("#define ELBA_TAG_UNION ");
+            try self.writeInt(@intFromEnum(ValueType.union_type));
+            try self.writeLine("");
+            try self.writeLine("static bool elba_tagged_equal(const ElbaTaggedValue* left, const ElbaTaggedValue* right) {");
+            try self.writeLine("    if (!left || !right) return left == right;");
+            try self.writeLine("    if (left->tag != right->tag) return false;");
+            try self.writeLine("    if (strcmp(left->type_name, right->type_name) != 0) return false;");
+            try self.writeLine("    if (left->tag == ELBA_TAG_FLOAT) {");
+            try self.writeLine("        double left_value, right_value;");
+            try self.writeLine("        memcpy(&left_value, &left->bits, sizeof(left_value));");
+            try self.writeLine("        memcpy(&right_value, &right->bits, sizeof(right_value));");
+            try self.writeLine("        return left_value == right_value;");
+            try self.writeLine("    }");
+            try self.writeLine("    if (left->tag == ELBA_TAG_STRING) {");
+            try self.writeLine("        return strcmp((const char*)(uintptr_t)left->bits, (const char*)(uintptr_t)right->bits) == 0;");
+            try self.writeLine("    }");
+            try self.writeLine("    if (left->tag == ELBA_TAG_OPTIONAL || left->tag == ELBA_TAG_UNION) {");
+            try self.writeLine("        return elba_tagged_equal((const ElbaTaggedValue*)(uintptr_t)left->bits, (const ElbaTaggedValue*)(uintptr_t)right->bits);");
+            try self.writeLine("    }");
+            try self.writeLine("    return left->bits == right->bits;");
+            try self.writeLine("}");
+            try self.writeLine("");
+        }
+
+        try self.writeLine("// Checked integer arithmetic");
+        try self.writeLine("static void elba_arithmetic_error(const char* message) {");
+        try self.writeLine("    fprintf(stderr, \"%s\\n\", message);");
+        try self.writeLine("    elba_cleanup();");
+        try self.writeLine("    exit(1);");
+        try self.writeLine("}");
+        try self.writeLine("");
+        try self.writeLine("static ElbaInt elba_checked_add(ElbaInt left, ElbaInt right) {");
+        try self.writeLine("    ElbaInt result;");
+        try self.writeLine("    if (__builtin_add_overflow(left, right, &result)) elba_arithmetic_error(\"Integer overflow!\");");
+        try self.writeLine("    return result;");
+        try self.writeLine("}");
+        try self.writeLine("");
+        try self.writeLine("static ElbaInt elba_checked_sub(ElbaInt left, ElbaInt right) {");
+        try self.writeLine("    ElbaInt result;");
+        try self.writeLine("    if (__builtin_sub_overflow(left, right, &result)) elba_arithmetic_error(\"Integer overflow!\");");
+        try self.writeLine("    return result;");
+        try self.writeLine("}");
+        try self.writeLine("");
+        try self.writeLine("static ElbaInt elba_checked_mul(ElbaInt left, ElbaInt right) {");
+        try self.writeLine("    ElbaInt result;");
+        try self.writeLine("    if (__builtin_mul_overflow(left, right, &result)) elba_arithmetic_error(\"Integer overflow!\");");
+        try self.writeLine("    return result;");
+        try self.writeLine("}");
+        try self.writeLine("");
+        try self.writeLine("static ElbaInt elba_checked_div(ElbaInt left, ElbaInt right) {");
+        try self.writeLine("    if (right == 0) elba_arithmetic_error(\"Division by zero!\");");
+        try self.writeLine("    if (left == INT64_MIN && right == -1) elba_arithmetic_error(\"Integer overflow!\");");
+        try self.writeLine("    return left / right;");
+        try self.writeLine("}");
+        try self.writeLine("");
+        try self.writeLine("static ElbaInt elba_checked_mod(ElbaInt left, ElbaInt right) {");
+        try self.writeLine("    if (right == 0) elba_arithmetic_error(\"Division by zero!\");");
+        try self.writeLine("    if (left == INT64_MIN && right == -1) elba_arithmetic_error(\"Integer overflow!\");");
+        try self.writeLine("    return left % right;");
+        try self.writeLine("}");
+        try self.writeLine("");
+        try self.writeLine("static ElbaInt elba_checked_pow(ElbaInt base, ElbaInt exponent) {");
+        try self.writeLine("    if (exponent < 0) elba_arithmetic_error(\"Negative integer exponent!\");");
+        try self.writeLine("    ElbaInt result = 1;");
+        try self.writeLine("    while (exponent != 0) {");
+        try self.writeLine("        if ((exponent & 1) != 0) result = elba_checked_mul(result, base);");
+        try self.writeLine("        exponent >>= 1;");
+        try self.writeLine("        if (exponent != 0) base = elba_checked_mul(base, base);");
+        try self.writeLine("    }");
+        try self.writeLine("    return result;");
+        try self.writeLine("}");
+        try self.writeLine("");
 
         // Generate I/O functions only if used
         if (self.used_builtins.contains("print") or self.used_builtins.contains("println")) {
@@ -471,6 +645,88 @@ pub const CCodeGen = struct {
                 try self.writeLine("}");
                 try self.writeLine("");
             }
+
+            if (self.used_builtins.contains("bool_to_str")) {
+                try self.writeLine("static ElbaString elba_bool_to_str(ElbaBool value) {");
+                try self.writeLine("    return value ? \"true\" : \"false\";");
+                try self.writeLine("}");
+                try self.writeLine("");
+            }
+
+            if (self.used_builtins.contains("str_contains")) {
+                try self.writeLine("static ElbaBool elba_str_contains(ElbaString str, ElbaString needle) {");
+                try self.writeLine("    return strstr(str, needle) != NULL;");
+                try self.writeLine("}");
+                try self.writeLine("");
+            }
+
+            if (self.used_builtins.contains("str_trim")) {
+                try self.writeLine("static ElbaString elba_str_trim(ElbaString str) {");
+                try self.writeLine("    const char* start = str;");
+                try self.writeLine("    while (*start && isspace((unsigned char)*start)) start++;");
+                try self.writeLine("    const char* end = str + strlen(str);");
+                try self.writeLine("    while (end > start && isspace((unsigned char)*(end - 1))) end--;");
+                try self.writeLine("    size_t len = (size_t)(end - start);");
+                try self.writeLine("    char* result = (char*)elba_malloc(len + 1);");
+                try self.writeLine("    if (!result) { fprintf(stderr, \"Memory allocation failed!\\n\"); elba_cleanup(); exit(1); }");
+                try self.writeLine("    memcpy(result, start, len);");
+                try self.writeLine("    result[len] = '\\0';");
+                try self.writeLine("    return result;");
+                try self.writeLine("}");
+                try self.writeLine("");
+            }
+
+            if (self.used_builtins.contains("str_split")) {
+                try self.writeLine("static ElbaInt* elba_str_split(ElbaString str, ElbaString delimiter) {");
+                try self.writeLine("    size_t delimiter_len = strlen(delimiter);");
+                try self.writeLine("    if (delimiter_len == 0) { fprintf(stderr, \"String split delimiter cannot be empty!\\n\"); elba_cleanup(); exit(1); }");
+                try self.writeLine("    ElbaInt count = 1;");
+                try self.writeLine("    const char* cursor = str;");
+                try self.writeLine("    const char* match;");
+                try self.writeLine("    while ((match = strstr(cursor, delimiter)) != NULL) { count++; cursor = match + delimiter_len; }");
+                try self.writeLine("    ElbaInt* result = (ElbaInt*)elba_malloc((count + 1) * sizeof(ElbaInt));");
+                try self.writeLine("    result[0] = count;");
+                try self.writeLine("    cursor = str;");
+                try self.writeLine("    for (ElbaInt index = 1; index <= count; index++) {");
+                try self.writeLine("        match = strstr(cursor, delimiter);");
+                try self.writeLine("        size_t len = match ? (size_t)(match - cursor) : strlen(cursor);");
+                try self.writeLine("        char* part = (char*)elba_malloc(len + 1);");
+                try self.writeLine("        memcpy(part, cursor, len);");
+                try self.writeLine("        part[len] = '\\0';");
+                try self.writeLine("        result[index] = (ElbaInt)(intptr_t)part;");
+                try self.writeLine("        if (!match) break;");
+                try self.writeLine("        cursor = match + delimiter_len;");
+                try self.writeLine("    }");
+                try self.writeLine("    return result;");
+                try self.writeLine("}");
+                try self.writeLine("");
+            }
+
+            if (self.used_builtins.contains("str_to_int")) {
+                try self.writeLine("static ElbaInt elba_str_to_int(ElbaString str) {");
+                try self.writeLine("    char* end = NULL;");
+                try self.writeLine("    errno = 0;");
+                try self.writeLine("    long long value = strtoll(str, &end, 10);");
+                try self.writeLine("    if (str == end || *end != '\\0' || isspace((unsigned char)*str) || errno == ERANGE) {");
+                try self.writeLine("        fprintf(stderr, \"Invalid integer string!\\n\"); elba_cleanup(); exit(1);");
+                try self.writeLine("    }");
+                try self.writeLine("    return (ElbaInt)value;");
+                try self.writeLine("}");
+                try self.writeLine("");
+            }
+
+            if (self.used_builtins.contains("str_to_float")) {
+                try self.writeLine("static ElbaFloat elba_str_to_float(ElbaString str) {");
+                try self.writeLine("    char* end = NULL;");
+                try self.writeLine("    errno = 0;");
+                try self.writeLine("    ElbaFloat value = strtod(str, &end);");
+                try self.writeLine("    if (str == end || *end != '\\0' || isspace((unsigned char)*str) || errno == ERANGE || !isfinite(value)) {");
+                try self.writeLine("        fprintf(stderr, \"Invalid float string!\\n\"); elba_cleanup(); exit(1);");
+                try self.writeLine("    }");
+                try self.writeLine("    return value;");
+                try self.writeLine("}");
+                try self.writeLine("");
+            }
         }
 
         // Generate math functions only if used
@@ -484,6 +740,7 @@ pub const CCodeGen = struct {
             }
 
             try self.writeLine("static ElbaInt elba_abs_int(ElbaInt value) {");
+            try self.writeLine("    if (value == INT64_MIN) { fprintf(stderr, \"Absolute value is outside the int range!\\n\"); elba_cleanup(); exit(1); }");
             try self.writeLine("    return value < 0 ? -value : value;");
             try self.writeLine("}");
             try self.writeLine("");
@@ -545,8 +802,7 @@ pub const CCodeGen = struct {
         const has_return_value = blk: {
             for (func.instructions) |inst| {
                 if (inst.op == .ret) {
-                    // If there's anything on the stack before ret, it returns a value
-                    // For now, assume functions with params return values
+                    // IR return instructions use the shared StackValue carrier.
                     break :blk true;
                 }
             }
@@ -554,7 +810,7 @@ pub const CCodeGen = struct {
         };
 
         if (has_return_value) {
-            try self.write("ElbaInt elba_");
+            try self.write("StackValue elba_");
         } else {
             try self.write("void elba_");
         }
@@ -565,7 +821,7 @@ pub const CCodeGen = struct {
         var i: usize = 0;
         while (i < func.param_count) : (i += 1) {
             if (i > 0) try self.write(", ");
-            try self.write("ElbaInt param");
+            try self.write("StackValue param");
             try self.writeInt(@intCast(i));
         }
 
@@ -588,7 +844,7 @@ pub const CCodeGen = struct {
         };
 
         if (has_return_value) {
-            try self.write("ElbaInt elba_");
+            try self.write("StackValue elba_");
         } else {
             try self.write("void elba_");
         }
@@ -599,7 +855,7 @@ pub const CCodeGen = struct {
         var i: usize = 0;
         while (i < func.param_count) : (i += 1) {
             if (i > 0) try self.write(", ");
-            try self.write("ElbaInt param");
+            try self.write("StackValue param");
             try self.writeInt(@intCast(i));
         }
 
@@ -610,48 +866,18 @@ pub const CCodeGen = struct {
         var var_names = try std.ArrayList([]const u8).initCapacity(self.allocator, 8);
         defer var_names.deinit(self.allocator);
 
-        // First, collect parameter names from the first load_var instructions
-        var param_names = try std.ArrayList([]const u8).initCapacity(self.allocator, func.param_count);
-        defer param_names.deinit(self.allocator);
-
-        // Parameters are variables that are loaded before they're ever stored
-        var stored_vars = std.StringHashMap(void).init(self.allocator);
-        defer stored_vars.deinit();
-
-        for (func.instructions) |inst| {
-            if (inst.op == .load_var) {
-                if (inst.string_data) |var_name| {
-                    // If we load a var before storing it, it must be a parameter
-                    if (!stored_vars.contains(var_name) and param_names.items.len < func.param_count) {
-                        var is_new = true;
-                        for (param_names.items) |pname| {
-                            if (std.mem.eql(u8, pname, var_name)) {
-                                is_new = false;
-                                break;
-                            }
-                        }
-                        if (is_new) {
-                            try param_names.append(self.allocator, var_name);
-                        }
-                    }
-                }
-            } else if (inst.op == .store_var) {
-                if (inst.string_data) |var_name| {
-                    try stored_vars.put(var_name, {});
-                }
-            }
-        }
+        const param_names = func.param_names;
 
         // Map parameters to their C variable names
-        for (param_names.items, 0..) |pname, idx| {
+        for (param_names, 0..) |pname, idx| {
             try self.writeIndent();
-            try self.write("ElbaInt ");
+            try self.write("StackValue ");
             try self.write(pname);
             try self.write(" = param");
             try self.writeInt(@intCast(idx));
             try self.writeLine(";");
         }
-        if (param_names.items.len > 0) {
+        if (param_names.len > 0) {
             try self.writeLine("");
         }
 
@@ -661,7 +887,7 @@ pub const CCodeGen = struct {
                 if (inst.string_data) |var_name| {
                     // Check if this is not a parameter
                     var is_param = false;
-                    for (param_names.items) |pname| {
+                    for (param_names) |pname| {
                         if (std.mem.eql(u8, pname, var_name)) {
                             is_param = true;
                             break;
@@ -683,9 +909,9 @@ pub const CCodeGen = struct {
         if (var_names.items.len > 0) {
             for (var_names.items) |var_name| {
                 try self.writeIndent();
-                try self.write("ElbaInt ");
+                try self.write("StackValue ");
                 try self.write(var_name);
-                try self.writeLine(" = 0;");
+                try self.writeLine(" = { .bits = 0 };");
             }
             try self.writeLine("");
         }
@@ -741,7 +967,7 @@ pub const CCodeGen = struct {
                 try self.writeLine(");");
             },
             .load_const_float => {
-                const f: f64 = @bitCast(@as(u64, @intCast(inst.operand1)));
+                const f: f64 = @bitCast(inst.operand1);
                 try self.write("elba_push_float(");
                 try self.writeFloat(f);
                 try self.writeLine(");");
@@ -763,78 +989,70 @@ pub const CCodeGen = struct {
             },
             .load_var => {
                 if (inst.string_data) |var_name| {
-                    try self.write("elba_push_int(");
+                    try self.writeLine("elba_check_stack_overflow();");
+                    try self.write("stack[stack_top++] = ");
                     try self.write(var_name);
-                    try self.writeLine(");");
+                    try self.writeLine(";");
                 }
             },
             .store_var => {
                 if (inst.string_data) |var_name| {
+                    try self.writeLine("elba_check_stack_underflow();");
                     try self.write(var_name);
-                    try self.writeLine(" = elba_pop_int();");
+                    try self.writeLine(" = stack[--stack_top];");
                 }
             },
-            .add => {
+            .add, .sub, .mul, .div, .mod => {
                 try self.writeLine("{");
                 self.indent_level += 1;
-                try self.writeIndent();
-                try self.writeLine("ElbaInt _b = elba_pop_int();");
-                try self.writeIndent();
-                try self.writeLine("ElbaInt _a = elba_pop_int();");
-                try self.writeIndent();
-                try self.writeLine("elba_push_int(_a + _b);");
-                self.indent_level -= 1;
-                try self.writeIndent();
-                try self.writeLine("}");
-            },
-            .sub => {
-                try self.writeLine("{");
-                self.indent_level += 1;
-                try self.writeIndent();
-                try self.writeLine("ElbaInt _b = elba_pop_int();");
-                try self.writeIndent();
-                try self.writeLine("ElbaInt _a = elba_pop_int();");
-                try self.writeIndent();
-                try self.writeLine("elba_push_int(_a - _b);");
-                self.indent_level -= 1;
-                try self.writeIndent();
-                try self.writeLine("}");
-            },
-            .mul => {
-                try self.writeLine("{");
-                self.indent_level += 1;
-                try self.writeIndent();
-                try self.writeLine("ElbaInt _b = elba_pop_int();");
-                try self.writeIndent();
-                try self.writeLine("ElbaInt _a = elba_pop_int();");
-                try self.writeIndent();
-                try self.writeLine("elba_push_int(_a * _b);");
-                self.indent_level -= 1;
-                try self.writeIndent();
-                try self.writeLine("}");
-            },
-            .div => {
-                try self.writeLine("{");
-                self.indent_level += 1;
-                try self.writeIndent();
-                try self.writeLine("ElbaInt _b = elba_pop_int();");
-                try self.writeIndent();
-                try self.writeLine("ElbaInt _a = elba_pop_int();");
-                try self.writeIndent();
-                try self.writeLine("elba_push_int(_a / _b);");
-                self.indent_level -= 1;
-                try self.writeIndent();
-                try self.writeLine("}");
-            },
-            .mod => {
-                try self.writeLine("{");
-                self.indent_level += 1;
-                try self.writeIndent();
-                try self.writeLine("ElbaInt _b = elba_pop_int();");
-                try self.writeIndent();
-                try self.writeLine("ElbaInt _a = elba_pop_int();");
-                try self.writeIndent();
-                try self.writeLine("elba_push_int(_a % _b);");
+                const left_type = ir.decodeBinaryLeft(inst.operand3);
+                const right_type = ir.decodeBinaryRight(inst.operand3);
+
+                if (inst.op == .add and left_type == .string and right_type == .string) {
+                    try self.writeIndent();
+                    try self.writeLine("ElbaString _b = elba_pop_string();");
+                    try self.writeIndent();
+                    try self.writeLine("ElbaString _a = elba_pop_string();");
+                    try self.writeIndent();
+                    try self.writeLine("elba_push_string(elba_str_concat(_a, _b));");
+                } else if (left_type == .float or right_type == .float) {
+                    try self.writeIndent();
+                    try self.write("ElbaFloat _b = ");
+                    try self.writeLine(if (right_type == .float) "elba_pop_float();" else "(ElbaFloat)elba_pop_int();");
+                    try self.writeIndent();
+                    try self.write("ElbaFloat _a = ");
+                    try self.writeLine(if (left_type == .float) "elba_pop_float();" else "(ElbaFloat)elba_pop_int();");
+                    try self.writeIndent();
+                    if (inst.op == .mod) {
+                        try self.writeLine("elba_push_float(fmod(_a, _b));");
+                    } else {
+                        try self.write("elba_push_float(_a ");
+                        try self.write(switch (inst.op) {
+                            .add => "+",
+                            .sub => "-",
+                            .mul => "*",
+                            .div => "/",
+                            else => unreachable,
+                        });
+                        try self.writeLine(" _b);");
+                    }
+                } else {
+                    try self.writeIndent();
+                    try self.writeLine("ElbaInt _b = elba_pop_int();");
+                    try self.writeIndent();
+                    try self.writeLine("ElbaInt _a = elba_pop_int();");
+                    try self.writeIndent();
+                    try self.write("elba_push_int(");
+                    try self.write(switch (inst.op) {
+                        .add => "elba_checked_add",
+                        .sub => "elba_checked_sub",
+                        .mul => "elba_checked_mul",
+                        .div => "elba_checked_div",
+                        .mod => "elba_checked_mod",
+                        else => unreachable,
+                    });
+                    try self.writeLine("(_a, _b));");
+                }
                 self.indent_level -= 1;
                 try self.writeIndent();
                 try self.writeLine("}");
@@ -843,9 +1061,15 @@ pub const CCodeGen = struct {
                 try self.writeLine("{");
                 self.indent_level += 1;
                 try self.writeIndent();
-                try self.writeLine("ElbaInt _a = elba_pop_int();");
-                try self.writeIndent();
-                try self.writeLine("elba_push_int(-_a);");
+                if (ir.decodeValueType(inst.operand3) == .float) {
+                    try self.writeLine("ElbaFloat _a = elba_pop_float();");
+                    try self.writeIndent();
+                    try self.writeLine("elba_push_float(-_a);");
+                } else {
+                    try self.writeLine("ElbaInt _a = elba_pop_int();");
+                    try self.writeIndent();
+                    try self.writeLine("elba_push_int(elba_checked_sub(0, _a));");
+                }
                 self.indent_level -= 1;
                 try self.writeIndent();
                 try self.writeLine("}");
@@ -853,90 +1077,98 @@ pub const CCodeGen = struct {
             .pow => {
                 try self.writeLine("{");
                 self.indent_level += 1;
-                try self.writeIndent();
-                try self.writeLine("ElbaFloat _b = (ElbaFloat)elba_pop_int();");
-                try self.writeIndent();
-                try self.writeLine("ElbaFloat _a = (ElbaFloat)elba_pop_int();");
-                try self.writeIndent();
-                try self.writeLine("elba_push_int((ElbaInt)pow(_a, _b));");
+                const left_type = ir.decodeBinaryLeft(inst.operand3);
+                const right_type = ir.decodeBinaryRight(inst.operand3);
+                if (left_type == .float or right_type == .float) {
+                    try self.writeIndent();
+                    try self.write("ElbaFloat _b = ");
+                    try self.writeLine(if (right_type == .float) "elba_pop_float();" else "(ElbaFloat)elba_pop_int();");
+                    try self.writeIndent();
+                    try self.write("ElbaFloat _a = ");
+                    try self.writeLine(if (left_type == .float) "elba_pop_float();" else "(ElbaFloat)elba_pop_int();");
+                    try self.writeIndent();
+                    try self.writeLine("elba_push_float(pow(_a, _b));");
+                } else {
+                    try self.writeIndent();
+                    try self.writeLine("ElbaInt _b = elba_pop_int();");
+                    try self.writeIndent();
+                    try self.writeLine("ElbaInt _a = elba_pop_int();");
+                    try self.writeIndent();
+                    try self.writeLine("elba_push_int(elba_checked_pow(_a, _b));");
+                }
                 self.indent_level -= 1;
                 try self.writeIndent();
                 try self.writeLine("}");
             },
-            .eq => {
+            .eq, .neq, .lt, .lte, .gt, .gte => {
                 try self.writeLine("{");
                 self.indent_level += 1;
-                try self.writeIndent();
-                try self.writeLine("ElbaInt _b = elba_pop_int();");
-                try self.writeIndent();
-                try self.writeLine("ElbaInt _a = elba_pop_int();");
-                try self.writeIndent();
-                try self.writeLine("elba_push_bool(_a == _b);");
-                self.indent_level -= 1;
-                try self.writeIndent();
-                try self.writeLine("}");
-            },
-            .neq => {
-                try self.writeLine("{");
-                self.indent_level += 1;
-                try self.writeIndent();
-                try self.writeLine("ElbaInt _b = elba_pop_int();");
-                try self.writeIndent();
-                try self.writeLine("ElbaInt _a = elba_pop_int();");
-                try self.writeIndent();
-                try self.writeLine("elba_push_bool(_a != _b);");
-                self.indent_level -= 1;
-                try self.writeIndent();
-                try self.writeLine("}");
-            },
-            .lt => {
-                try self.writeLine("{");
-                self.indent_level += 1;
-                try self.writeIndent();
-                try self.writeLine("ElbaInt _b = elba_pop_int();");
-                try self.writeIndent();
-                try self.writeLine("ElbaInt _a = elba_pop_int();");
-                try self.writeIndent();
-                try self.writeLine("elba_push_bool(_a < _b);");
-                self.indent_level -= 1;
-                try self.writeIndent();
-                try self.writeLine("}");
-            },
-            .lte => {
-                try self.writeLine("{");
-                self.indent_level += 1;
-                try self.writeIndent();
-                try self.writeLine("ElbaInt _b = elba_pop_int();");
-                try self.writeIndent();
-                try self.writeLine("ElbaInt _a = elba_pop_int();");
-                try self.writeIndent();
-                try self.writeLine("elba_push_bool(_a <= _b);");
-                self.indent_level -= 1;
-                try self.writeIndent();
-                try self.writeLine("}");
-            },
-            .gt => {
-                try self.writeLine("{");
-                self.indent_level += 1;
-                try self.writeIndent();
-                try self.writeLine("ElbaInt _b = elba_pop_int();");
-                try self.writeIndent();
-                try self.writeLine("ElbaInt _a = elba_pop_int();");
-                try self.writeIndent();
-                try self.writeLine("elba_push_bool(_a > _b);");
-                self.indent_level -= 1;
-                try self.writeIndent();
-                try self.writeLine("}");
-            },
-            .gte => {
-                try self.writeLine("{");
-                self.indent_level += 1;
-                try self.writeIndent();
-                try self.writeLine("ElbaInt _b = elba_pop_int();");
-                try self.writeIndent();
-                try self.writeLine("ElbaInt _a = elba_pop_int();");
-                try self.writeIndent();
-                try self.writeLine("elba_push_bool(_a >= _b);");
+                const left_type = ir.decodeBinaryLeft(inst.operand3);
+                const right_type = ir.decodeBinaryRight(inst.operand3);
+
+                const left_is_tagged = left_type == .optional or left_type == .union_type;
+                const right_is_tagged = right_type == .optional or right_type == .union_type;
+                if ((left_is_tagged or right_is_tagged) and (inst.op == .eq or inst.op == .neq)) {
+                    try self.writeIndent();
+                    try self.writeLine("elba_check_stack_underflow();");
+                    try self.writeIndent();
+                    try self.writeLine("ElbaTaggedValue* _b = (ElbaTaggedValue*)(uintptr_t)stack[--stack_top].bits;");
+                    try self.writeIndent();
+                    try self.writeLine("elba_check_stack_underflow();");
+                    try self.writeIndent();
+                    try self.writeLine("ElbaTaggedValue* _a = (ElbaTaggedValue*)(uintptr_t)stack[--stack_top].bits;");
+                    try self.writeIndent();
+                    try self.writeLine(if (inst.op == .eq)
+                        "elba_push_bool(elba_tagged_equal(_a, _b));"
+                    else
+                        "elba_push_bool(!elba_tagged_equal(_a, _b));");
+                } else if (left_type == .string and right_type == .string and (inst.op == .eq or inst.op == .neq)) {
+                    try self.writeIndent();
+                    try self.writeLine("ElbaString _b = elba_pop_string();");
+                    try self.writeIndent();
+                    try self.writeLine("ElbaString _a = elba_pop_string();");
+                    try self.writeIndent();
+                    try self.writeLine(if (inst.op == .eq)
+                        "elba_push_bool(strcmp(_a, _b) == 0);"
+                    else
+                        "elba_push_bool(strcmp(_a, _b) != 0);");
+                } else if (left_type == .float or right_type == .float) {
+                    try self.writeIndent();
+                    try self.write("ElbaFloat _b = ");
+                    try self.writeLine(if (right_type == .float) "elba_pop_float();" else "(ElbaFloat)elba_pop_int();");
+                    try self.writeIndent();
+                    try self.write("ElbaFloat _a = ");
+                    try self.writeLine(if (left_type == .float) "elba_pop_float();" else "(ElbaFloat)elba_pop_int();");
+                    try self.writeIndent();
+                    try self.write("elba_push_bool(_a ");
+                    try self.write(switch (inst.op) {
+                        .eq => "==",
+                        .neq => "!=",
+                        .lt => "<",
+                        .lte => "<=",
+                        .gt => ">",
+                        .gte => ">=",
+                        else => unreachable,
+                    });
+                    try self.writeLine(" _b);");
+                } else {
+                    try self.writeIndent();
+                    try self.writeLine("ElbaInt _b = elba_pop_int();");
+                    try self.writeIndent();
+                    try self.writeLine("ElbaInt _a = elba_pop_int();");
+                    try self.writeIndent();
+                    try self.write("elba_push_bool(_a ");
+                    try self.write(switch (inst.op) {
+                        .eq => "==",
+                        .neq => "!=",
+                        .lt => "<",
+                        .lte => "<=",
+                        .gt => ">",
+                        .gte => ">=",
+                        else => unreachable,
+                    });
+                    try self.writeLine(" _b);");
+                }
                 self.indent_level -= 1;
                 try self.writeIndent();
                 try self.writeLine("}");
@@ -1012,13 +1244,30 @@ pub const CCodeGen = struct {
             .call => {
                 if (inst.string_data) |func_name| {
                     const arg_count = inst.operand2;
+                    const argument_type = ir.decodeValueType(inst.operand3);
 
                     // Handle built-in functions
                     if (std.mem.eql(u8, func_name, "println")) {
-                        try self.writeLine("elba_println_string(elba_pop_string());");
+                        if (argument_type == .int) {
+                            try self.writeLine("elba_println_int(elba_pop_int());");
+                        } else if (argument_type == .float) {
+                            try self.writeLine("elba_println_float(elba_pop_float());");
+                        } else if (argument_type == .bool) {
+                            try self.writeLine("printf(\"%s\\n\", elba_pop_bool() ? \"true\" : \"false\");");
+                        } else {
+                            try self.writeLine("elba_println_string(elba_pop_string());");
+                        }
                         try self.writeLine("elba_push_int(0);  // void return");
                     } else if (std.mem.eql(u8, func_name, "print")) {
-                        try self.writeLine("elba_print_string(elba_pop_string());");
+                        if (argument_type == .int) {
+                            try self.writeLine("elba_print_int(elba_pop_int());");
+                        } else if (argument_type == .float) {
+                            try self.writeLine("elba_print_float(elba_pop_float());");
+                        } else if (argument_type == .bool) {
+                            try self.writeLine("printf(\"%s\", elba_pop_bool() ? \"true\" : \"false\");");
+                        } else {
+                            try self.writeLine("elba_print_string(elba_pop_string());");
+                        }
                         try self.writeLine("elba_push_int(0);  // void return");
                     } else if (std.mem.eql(u8, func_name, "str_len")) {
                         try self.writeLine("elba_push_int(elba_str_len(elba_pop_string()));");
@@ -1052,10 +1301,137 @@ pub const CCodeGen = struct {
                         try self.writeLine("elba_push_string(elba_int_to_str(elba_pop_int()));");
                     } else if (std.mem.eql(u8, func_name, "float_to_str")) {
                         try self.writeLine("elba_push_string(elba_float_to_str(elba_pop_float()));");
+                    } else if (std.mem.eql(u8, func_name, "bool_to_str")) {
+                        try self.writeLine("elba_push_string(elba_bool_to_str(elba_pop_bool()));");
+                    } else if (std.mem.eql(u8, func_name, "str_contains")) {
+                        try self.writeLine("{");
+                        self.indent_level += 1;
+                        try self.writeIndent();
+                        try self.writeLine("ElbaString needle = elba_pop_string();");
+                        try self.writeIndent();
+                        try self.writeLine("ElbaString str = elba_pop_string();");
+                        try self.writeIndent();
+                        try self.writeLine("elba_push_bool(elba_str_contains(str, needle));");
+                        self.indent_level -= 1;
+                        try self.writeIndent();
+                        try self.writeLine("}");
+                    } else if (std.mem.eql(u8, func_name, "str_trim")) {
+                        try self.writeLine("elba_push_string(elba_str_trim(elba_pop_string()));");
+                    } else if (std.mem.eql(u8, func_name, "str_split")) {
+                        try self.writeLine("{");
+                        self.indent_level += 1;
+                        try self.writeIndent();
+                        try self.writeLine("ElbaString delimiter = elba_pop_string();");
+                        try self.writeIndent();
+                        try self.writeLine("ElbaString str = elba_pop_string();");
+                        try self.writeIndent();
+                        try self.writeLine("elba_push_ptr((void*)elba_str_split(str, delimiter));");
+                        self.indent_level -= 1;
+                        try self.writeIndent();
+                        try self.writeLine("}");
+                    } else if (std.mem.eql(u8, func_name, "str_to_int")) {
+                        try self.writeLine("elba_push_int(elba_str_to_int(elba_pop_string()));");
+                    } else if (std.mem.eql(u8, func_name, "str_to_float")) {
+                        try self.writeLine("elba_push_float(elba_str_to_float(elba_pop_string()));");
+                    } else if (std.mem.eql(u8, func_name, "int_to_float")) {
+                        try self.writeLine("elba_push_float((ElbaFloat)elba_pop_int());");
+                    } else if (std.mem.eql(u8, func_name, "float_to_int")) {
+                        try self.writeLine("{");
+                        self.indent_level += 1;
+                        try self.writeIndent();
+                        try self.writeLine("ElbaFloat value = elba_pop_float();");
+                        try self.writeIndent();
+                        try self.writeLine("if (!isfinite(value) || value < -9223372036854775808.0 || value >= 9223372036854775808.0) { fprintf(stderr, \"Float cannot be represented as int!\\n\"); elba_cleanup(); exit(1); }");
+                        try self.writeIndent();
+                        try self.writeLine("elba_push_int((ElbaInt)value);");
+                        self.indent_level -= 1;
+                        try self.writeIndent();
+                        try self.writeLine("}");
+                    } else if (std.mem.eql(u8, func_name, "array_len")) {
+                        try self.writeLine("{");
+                        self.indent_level += 1;
+                        try self.writeIndent();
+                        try self.writeLine("ElbaInt* arr = (ElbaInt*)elba_pop_ptr();");
+                        try self.writeIndent();
+                        try self.writeLine("elba_push_int(arr[0]);");
+                        self.indent_level -= 1;
+                        try self.writeIndent();
+                        try self.writeLine("}");
+                    } else if (std.mem.eql(u8, func_name, "array_push")) {
+                        try self.writeLine("{");
+                        self.indent_level += 1;
+                        try self.writeIndent();
+                        try self.writeLine("ElbaInt value = elba_pop_int();");
+                        try self.writeIndent();
+                        try self.writeLine("ElbaInt* arr = (ElbaInt*)elba_pop_ptr();");
+                        try self.writeIndent();
+                        try self.writeLine("ElbaInt size = arr[0];");
+                        try self.writeIndent();
+                        try self.writeLine("ElbaInt* result = (ElbaInt*)elba_malloc((size + 2) * sizeof(ElbaInt));");
+                        try self.writeIndent();
+                        try self.writeLine("memcpy(result, arr, (size + 1) * sizeof(ElbaInt));");
+                        try self.writeIndent();
+                        try self.writeLine("result[0] = size + 1;");
+                        try self.writeIndent();
+                        try self.writeLine("result[size + 1] = value;");
+                        try self.writeIndent();
+                        try self.writeLine("elba_push_ptr((void*)result);");
+                        self.indent_level -= 1;
+                        try self.writeIndent();
+                        try self.writeLine("}");
+                    } else if (std.mem.eql(u8, func_name, "array_pop")) {
+                        try self.writeLine("{");
+                        self.indent_level += 1;
+                        try self.writeIndent();
+                        try self.writeLine("ElbaInt* arr = (ElbaInt*)elba_pop_ptr();");
+                        try self.writeIndent();
+                        try self.writeLine("ElbaInt size = arr[0];");
+                        try self.writeIndent();
+                        try self.writeLine("if (size <= 0) { fprintf(stderr, \"Cannot pop an empty array!\\n\"); elba_cleanup(); exit(1); }");
+                        try self.writeIndent();
+                        try self.writeLine("ElbaInt* result = (ElbaInt*)elba_malloc(size * sizeof(ElbaInt));");
+                        try self.writeIndent();
+                        try self.writeLine("result[0] = size - 1;");
+                        try self.writeIndent();
+                        try self.writeLine("memcpy(result + 1, arr + 1, (size - 1) * sizeof(ElbaInt));");
+                        try self.writeIndent();
+                        try self.writeLine("elba_push_ptr((void*)result);");
+                        self.indent_level -= 1;
+                        try self.writeIndent();
+                        try self.writeLine("}");
+                    } else if (std.mem.eql(u8, func_name, "array_slice")) {
+                        try self.writeLine("{");
+                        self.indent_level += 1;
+                        try self.writeIndent();
+                        try self.writeLine("ElbaInt end = elba_pop_int();");
+                        try self.writeIndent();
+                        try self.writeLine("ElbaInt start = elba_pop_int();");
+                        try self.writeIndent();
+                        try self.writeLine("ElbaInt* arr = (ElbaInt*)elba_pop_ptr();");
+                        try self.writeIndent();
+                        try self.writeLine("ElbaInt size = arr[0];");
+                        try self.writeIndent();
+                        try self.writeLine("if (start < 0 || end < start || end > size) { fprintf(stderr, \"Array slice out of bounds!\\n\"); elba_cleanup(); exit(1); }");
+                        try self.writeIndent();
+                        try self.writeLine("ElbaInt length = end - start;");
+                        try self.writeIndent();
+                        try self.writeLine("ElbaInt* result = (ElbaInt*)elba_malloc((length + 1) * sizeof(ElbaInt));");
+                        try self.writeIndent();
+                        try self.writeLine("result[0] = length;");
+                        try self.writeIndent();
+                        try self.writeLine("memcpy(result + 1, arr + start + 1, length * sizeof(ElbaInt));");
+                        try self.writeIndent();
+                        try self.writeLine("elba_push_ptr((void*)result);");
+                        self.indent_level -= 1;
+                        try self.writeIndent();
+                        try self.writeLine("}");
                     } else if (std.mem.eql(u8, func_name, "abs")) {
-                        try self.writeLine("elba_push_int(elba_abs_int(elba_pop_int()));");
+                        try self.writeLine(if (argument_type == .float)
+                            "elba_push_float(elba_abs_float(elba_pop_float()));"
+                        else
+                            "elba_push_int(elba_abs_int(elba_pop_int()));");
                     } else if (std.mem.eql(u8, func_name, "sqrt")) {
-                        try self.writeLine("elba_push_float(elba_sqrt((ElbaFloat)elba_pop_int()));");
+                        try self.writeLine("elba_push_float(elba_sqrt(elba_pop_float()));");
                     } else if (std.mem.eql(u8, func_name, "floor")) {
                         try self.writeLine("elba_push_float(elba_floor(elba_pop_float()));");
                     } else if (std.mem.eql(u8, func_name, "ceil")) {
@@ -1064,11 +1440,11 @@ pub const CCodeGen = struct {
                         try self.writeLine("{");
                         self.indent_level += 1;
                         try self.writeIndent();
-                        try self.writeLine("ElbaInt b = elba_pop_int();");
+                        try self.writeLine(if (argument_type == .float) "ElbaFloat b = elba_pop_float();" else "ElbaInt b = elba_pop_int();");
                         try self.writeIndent();
-                        try self.writeLine("ElbaInt a = elba_pop_int();");
+                        try self.writeLine(if (argument_type == .float) "ElbaFloat a = elba_pop_float();" else "ElbaInt a = elba_pop_int();");
                         try self.writeIndent();
-                        try self.writeLine("elba_push_int(elba_min_int(a, b));");
+                        try self.writeLine(if (argument_type == .float) "elba_push_float(elba_min_float(a, b));" else "elba_push_int(elba_min_int(a, b));");
                         self.indent_level -= 1;
                         try self.writeIndent();
                         try self.writeLine("}");
@@ -1076,11 +1452,11 @@ pub const CCodeGen = struct {
                         try self.writeLine("{");
                         self.indent_level += 1;
                         try self.writeIndent();
-                        try self.writeLine("ElbaInt b = elba_pop_int();");
+                        try self.writeLine(if (argument_type == .float) "ElbaFloat b = elba_pop_float();" else "ElbaInt b = elba_pop_int();");
                         try self.writeIndent();
-                        try self.writeLine("ElbaInt a = elba_pop_int();");
+                        try self.writeLine(if (argument_type == .float) "ElbaFloat a = elba_pop_float();" else "ElbaInt a = elba_pop_int();");
                         try self.writeIndent();
-                        try self.writeLine("elba_push_int(elba_max_int(a, b));");
+                        try self.writeLine(if (argument_type == .float) "elba_push_float(elba_max_float(a, b));" else "elba_push_int(elba_max_int(a, b));");
                         self.indent_level -= 1;
                         try self.writeIndent();
                         try self.writeLine("}");
@@ -1094,14 +1470,14 @@ pub const CCodeGen = struct {
                             var i: i64 = @intCast(arg_count - 1);
                             while (i >= 0) : (i -= 1) {
                                 try self.writeIndent();
-                                try self.write("ElbaInt arg");
+                                try self.write("StackValue arg");
                                 try self.writeInt(@intCast(i));
-                                try self.writeLine(" = elba_pop_int();");
+                                try self.writeLine(" = stack[--stack_top];");
                             }
 
                             // Call function and push result back
                             try self.writeIndent();
-                            try self.write("ElbaInt result = elba_");
+                            try self.write("StackValue result = elba_");
                             try self.write(func_name);
                             try self.write("(");
 
@@ -1114,21 +1490,34 @@ pub const CCodeGen = struct {
 
                             try self.writeLine(");");
                             try self.writeIndent();
-                            try self.writeLine("elba_push_int(result);");
+                            try self.writeLine("elba_check_stack_overflow();");
+                            try self.writeIndent();
+                            try self.writeLine("stack[stack_top++] = result;");
 
                             self.indent_level -= 1;
                             try self.writeIndent();
                             try self.writeLine("}");
                         } else {
-                            try self.write("elba_push_int(elba_");
+                            try self.writeLine("{");
+                            self.indent_level += 1;
+                            try self.writeIndent();
+                            try self.write("StackValue result = elba_");
                             try self.write(func_name);
-                            try self.writeLine("());");
+                            try self.writeLine("();");
+                            try self.writeIndent();
+                            try self.writeLine("elba_check_stack_overflow();");
+                            try self.writeIndent();
+                            try self.writeLine("stack[stack_top++] = result;");
+                            self.indent_level -= 1;
+                            try self.writeIndent();
+                            try self.writeLine("}");
                         }
                     }
                 }
             },
             .ret => {
-                try self.writeLine("return elba_pop_int();");
+                try self.writeLine("elba_check_stack_underflow();");
+                try self.writeLine("return stack[--stack_top];");
             },
             .pop => {
                 try self.writeLine("elba_check_stack_underflow();");
@@ -1149,6 +1538,7 @@ pub const CCodeGen = struct {
                 try self.writeIndent();
                 try self.writeLine("}");
             },
+            .stack_reset => try self.writeLine("/* compiler stack synchronization */"),
             .halt => {
                 try self.writeLine("return;");
             },
@@ -1228,8 +1618,6 @@ pub const CCodeGen = struct {
                 try self.writeLine("}");
                 try self.writeIndent();
                 try self.writeLine("arr[index + 1] = value;");
-                try self.writeIndent();
-                try self.writeLine("elba_push_ptr((void*)arr);");
                 self.indent_level -= 1;
                 try self.writeIndent();
                 try self.writeLine("}");
@@ -1294,98 +1682,52 @@ pub const CCodeGen = struct {
                 try self.writeIndent();
                 try self.writeLine("}");
             },
-            .builtin_call => {
-                if (inst.string_data) |func_name| {
-                    try self.write("// Builtin call: ");
-                    try self.write(func_name);
-                    try self.writeLine("");
-                }
-            },
             .type_check => {
-                // For now, just push true - proper type checking would need runtime type tags
-                try self.writeLine("stack_top--;  // pop value to check");
-                try self.writeLine("elba_push_bool(true);  // placeholder");
-            },
-            .type_check_not => {
-                // For now, just push false - proper type checking would need runtime type tags
-                try self.writeLine("stack_top--;  // pop value to check");
-                try self.writeLine("elba_push_bool(false);  // placeholder");
-            },
-            .cast => {
-                // For now, no-op - value stays on stack
-                try self.writeLine("// Type cast (no-op)");
-            },
-            .load_global => {
-                if (inst.string_data) |var_name| {
-                    try self.write("elba_push_int(global_");
-                    try self.write(var_name);
+                const actual_type = ir.decodeValueType(inst.operand3);
+                const matches = switch (inst.operand1) {
+                    1 => actual_type == .int,
+                    2 => actual_type == .float,
+                    3 => actual_type == .string,
+                    4 => actual_type == .bool,
+                    else => false,
+                };
+                const negate = inst.operand2 != 0;
+                if (actual_type == .optional or actual_type == .union_type) {
+                    const target_tag: i64 = switch (inst.operand1) {
+                        1 => @intFromEnum(ValueType.int),
+                        2 => @intFromEnum(ValueType.float),
+                        3 => @intFromEnum(ValueType.string),
+                        4 => @intFromEnum(ValueType.bool),
+                        5 => @intFromEnum(ValueType.struct_type),
+                        6 => @intFromEnum(ValueType.array),
+                        7 => @intFromEnum(ValueType.null_type),
+                        8 => @intFromEnum(ValueType.optional),
+                        9 => @intFromEnum(ValueType.union_type),
+                        else => -1,
+                    };
+                    try self.writeLine("{");
+                    self.indent_level += 1;
+                    try self.writeIndent();
+                    try self.writeLine("ElbaTaggedValue* tagged = (ElbaTaggedValue*)elba_pop_ptr();");
+                    try self.writeIndent();
+                    try self.write("ElbaBool matches = tagged != NULL && tagged->tag == ");
+                    try self.writeInt(target_tag);
+                    try self.write(" && strcmp(tagged->type_name, \"");
+                    try self.writeEscapedString(inst.string_data orelse "unknown");
+                    try self.writeLine("\") == 0;");
+                    try self.writeIndent();
+                    try self.writeLine(if (negate) "elba_push_bool(!matches);" else "elba_push_bool(matches);");
+                    self.indent_level -= 1;
+                    try self.writeIndent();
+                    try self.writeLine("}");
+                } else {
+                    try self.writeLine("elba_check_stack_underflow();");
+                    try self.writeLine("stack_top--;  // discard the checked value");
+                    try self.write("elba_push_bool(");
+                    const static_matches = if (inst.operand1 == 10) true else if (inst.operand1 == 11) false else matches;
+                    try self.write(if (if (negate) !static_matches else static_matches) "true" else "false");
                     try self.writeLine(");");
                 }
-            },
-            .store_global => {
-                if (inst.string_data) |var_name| {
-                    try self.write("global_");
-                    try self.write(var_name);
-                    try self.writeLine(" = elba_pop_int();");
-                }
-            },
-            .call_indirect => {
-                try self.writeLine("// call_indirect: not yet implemented");
-            },
-            .ret_void => {
-                try self.writeLine("return;");
-            },
-            .swap => {
-                try self.writeLine("{");
-                self.indent_level += 1;
-                try self.writeIndent();
-                try self.writeLine("ElbaInt _a = stack[stack_top - 1];");
-                try self.writeIndent();
-                try self.writeLine("stack[stack_top - 1] = stack[stack_top - 2];");
-                try self.writeIndent();
-                try self.writeLine("stack[stack_top - 2] = _a;");
-                self.indent_level -= 1;
-                try self.writeIndent();
-                try self.writeLine("}");
-            },
-            .rot => {
-                try self.writeLine("{");
-                self.indent_level += 1;
-                try self.writeIndent();
-                try self.writeLine("ElbaInt _c = stack[stack_top - 1];");
-                try self.writeIndent();
-                try self.writeLine("ElbaInt _b = stack[stack_top - 2];");
-                try self.writeIndent();
-                try self.writeLine("ElbaInt _a = stack[stack_top - 3];");
-                try self.writeIndent();
-                try self.writeLine("stack[stack_top - 3] = _b;");
-                try self.writeIndent();
-                try self.writeLine("stack[stack_top - 2] = _c;");
-                try self.writeIndent();
-                try self.writeLine("stack[stack_top - 1] = _a;");
-                self.indent_level -= 1;
-                try self.writeIndent();
-                try self.writeLine("}");
-            },
-            .array_literal => {
-                const n = inst.operand1;
-                try self.writeLine("{");
-                self.indent_level += 1;
-                try self.writeIndent();
-                try self.write("ElbaInt size = ");
-                try self.writeInt(n);
-                try self.writeLine(";");
-                try self.writeIndent();
-                try self.writeLine("ElbaInt* arr = (ElbaInt*)elba_malloc((size + 1) * sizeof(ElbaInt));");
-                try self.writeIndent();
-                try self.writeLine("arr[0] = size;");
-                try self.writeIndent();
-                try self.writeLine("for (ElbaInt i = size; i > 0; i--) arr[i] = elba_pop_int();");
-                try self.writeIndent();
-                try self.writeLine("elba_push_ptr((void*)arr);");
-                self.indent_level -= 1;
-                try self.writeIndent();
-                try self.writeLine("}");
             },
             .array_len => {
                 try self.writeLine("{");
@@ -1398,143 +1740,49 @@ pub const CCodeGen = struct {
                 try self.writeIndent();
                 try self.writeLine("}");
             },
-            .array_push => {
-                try self.writeLine("{");
-                self.indent_level += 1;
-                try self.writeIndent();
-                try self.writeLine("ElbaInt value = elba_pop_int();");
-                try self.writeIndent();
-                try self.writeLine("ElbaInt* arr = (ElbaInt*)elba_pop_ptr();");
-                try self.writeIndent();
-                try self.writeLine("ElbaInt size = arr[0];");
-                try self.writeIndent();
-                try self.writeLine("arr = (ElbaInt*)elba_realloc(arr, (size + 2) * sizeof(ElbaInt));");
-                try self.writeIndent();
-                try self.writeLine("arr[0] = size + 1;");
-                try self.writeIndent();
-                try self.writeLine("arr[size + 1] = value;");
-                try self.writeIndent();
-                try self.writeLine("elba_push_ptr((void*)arr);");
-                self.indent_level -= 1;
-                try self.writeIndent();
-                try self.writeLine("}");
-            },
-            .array_pop => {
-                try self.writeLine("{");
-                self.indent_level += 1;
-                try self.writeIndent();
-                try self.writeLine("ElbaInt* arr = (ElbaInt*)elba_pop_ptr();");
-                try self.writeIndent();
-                try self.writeLine("ElbaInt size = arr[0];");
-                try self.writeIndent();
-                try self.writeLine("if (size > 0) {");
-                try self.writeIndent();
-                try self.writeLine("    elba_push_int(arr[size]);");
-                try self.writeIndent();
-                try self.writeLine("    arr[0] = size - 1;");
-                try self.writeIndent();
-                try self.writeLine("} else {");
-                try self.writeIndent();
-                try self.writeLine("    elba_push_int(0);  // return 0 for empty array");
-                try self.writeIndent();
-                try self.writeLine("}");
-                try self.writeIndent();
-                try self.writeLine("elba_push_ptr((void*)arr);");
-                self.indent_level -= 1;
-                try self.writeIndent();
-                try self.writeLine("}");
-            },
-            .field_get_name => {
-                // Field by name - for now treat as field by index using operand1
-                try self.writeLine("{");
-                self.indent_level += 1;
-                try self.writeIndent();
-                try self.write("ElbaInt field_idx = ");
-                try self.writeInt(inst.operand1);
-                try self.writeLine(";");
-                try self.writeIndent();
-                try self.writeLine("ElbaInt* strct = (ElbaInt*)elba_pop_ptr();");
-                try self.writeIndent();
-                try self.writeLine("elba_push_int(strct[field_idx]);");
-                self.indent_level -= 1;
-                try self.writeIndent();
-                try self.writeLine("}");
-            },
-            .field_set_name => {
-                // Field by name - for now treat as field by index using operand1
-                try self.writeLine("{");
-                self.indent_level += 1;
-                try self.writeIndent();
-                try self.writeLine("ElbaInt value = elba_pop_int();");
-                try self.writeIndent();
-                try self.write("ElbaInt field_idx = ");
-                try self.writeInt(inst.operand1);
-                try self.writeLine(";");
-                try self.writeIndent();
-                try self.writeLine("ElbaInt* strct = (ElbaInt*)elba_pop_ptr();");
-                try self.writeIndent();
-                try self.writeLine("strct[field_idx] = value;");
-                try self.writeIndent();
-                try self.writeLine("elba_push_ptr((void*)strct);");
-                self.indent_level -= 1;
-                try self.writeIndent();
-                try self.writeLine("}");
-            },
-            .method_call => {
-                // Method call - for now treat like a regular call
-                if (inst.string_data) |method_name| {
-                    try self.write("// method_call: ");
-                    try self.write(method_name);
-                    try self.writeLine(" (not yet implemented)");
-                }
-            },
             .optional_wrap => {
-                // Wrap value in optional - for simplicity, push a flag indicating non-null
-                try self.writeLine("// optional_wrap: value stays on stack (implicit wrap)");
+                const payload_type = ir.decodeValueType(inst.operand3) orelse .null_type;
+                try self.writeLine("{");
+                self.indent_level += 1;
+                try self.writeIndent();
+                try self.writeLine("elba_check_stack_underflow();");
+                try self.writeIndent();
+                try self.writeLine("StackValue payload = stack[--stack_top];");
+                try self.writeIndent();
+                try self.writeLine("ElbaTaggedValue* tagged = (ElbaTaggedValue*)elba_malloc(sizeof(ElbaTaggedValue));");
+                try self.writeIndent();
+                try self.write("tagged->tag = ");
+                try self.writeInt(@intFromEnum(payload_type));
+                try self.writeLine(";");
+                try self.writeIndent();
+                try self.writeLine("tagged->bits = payload.bits;");
+                try self.writeIndent();
+                try self.write("tagged->type_name = \"");
+                try self.writeEscapedString(inst.string_data orelse "unknown");
+                try self.writeLine("\";");
+                try self.writeIndent();
+                try self.writeLine("elba_push_ptr((void*)tagged);");
+                self.indent_level -= 1;
+                try self.writeIndent();
+                try self.writeLine("}");
             },
             .optional_unwrap => {
-                // Unwrap optional - for now, just leave value on stack
-                try self.writeLine("// optional_unwrap: value stays on stack");
+                try self.writeLine("{");
+                self.indent_level += 1;
+                try self.writeIndent();
+                try self.writeLine("ElbaTaggedValue* tagged = (ElbaTaggedValue*)elba_pop_ptr();");
+                try self.writeIndent();
+                try self.writeLine("if (!tagged) elba_arithmetic_error(\"Cannot unwrap null!\");");
+                try self.writeIndent();
+                try self.writeLine("elba_check_stack_overflow();");
+                try self.writeIndent();
+                try self.writeLine("stack[stack_top++].bits = tagged->bits;");
+                self.indent_level -= 1;
+                try self.writeIndent();
+                try self.writeLine("}");
             },
             .optional_is_null => {
-                // Check if optional is null - for now push false (not null)
-                try self.writeLine("elba_push_bool(false);  // optional_is_null placeholder");
-            },
-            .str_concat => {
-                try self.writeLine("{");
-                self.indent_level += 1;
-                try self.writeIndent();
-                try self.writeLine("ElbaString b = elba_pop_string();");
-                try self.writeIndent();
-                try self.writeLine("ElbaString a = elba_pop_string();");
-                try self.writeIndent();
-                try self.writeLine("elba_push_string(elba_str_concat(a, b));");
-                self.indent_level -= 1;
-                try self.writeIndent();
-                try self.writeLine("}");
-            },
-            .str_len => {
-                try self.writeLine("elba_push_int(elba_str_len(elba_pop_string()));");
-            },
-            .enter_scope => {
-                try self.writeLine("// enter_scope");
-            },
-            .leave_scope => {
-                try self.writeLine("// leave_scope");
-            },
-            .nop => {
-                try self.writeLine("// nop");
-            },
-            .debug_print => {
-                try self.writeLine("{");
-                self.indent_level += 1;
-                try self.writeIndent();
-                try self.writeLine("ElbaInt val = stack[stack_top - 1];");
-                try self.writeIndent();
-                try self.writeLine("fprintf(stderr, \"DEBUG: %lld\\n\", (long long)val);");
-                self.indent_level -= 1;
-                try self.writeIndent();
-                try self.writeLine("}");
+                try self.writeLine("elba_push_bool(elba_pop_ptr() == NULL);");
             },
         }
     }

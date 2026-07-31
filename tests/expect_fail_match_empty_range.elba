@@ -1,0 +1,5 @@
+const value: str = match (3) {
+    10..1 => "empty",
+    _ => "other"
+};
+println(value);

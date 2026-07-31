@@ -43,5 +43,52 @@ const status: str = match (flag) {
 const msg3: str = str_concat("Flag status: ", status);
 println(msg3);
 
+// Match subjects may be computed expressions or function calls.
+const computed: str = match (1 + 2) {
+    3 => "computed three",
+    _ => "unexpected"
+};
+println(computed);
+
+fn status_code() -> int {
+    return 7;
+}
+
+const called: str = match (status_code()) {
+    7 => "function seven",
+    _ => "unexpected"
+};
+println(called);
+
+// Signed patterns include negative literals and ranges.
+const temperature: int = -5;
+const temperature_label: str = match (temperature) {
+    -10..0 => "below zero",
+    0 => "freezing",
+    _ => "above zero"
+};
+println(temperature_label);
+
+// Integer ranges can prove exhaustiveness across the complete i64 domain.
+const polarity: str = match (-3) {
+    -9223372036854775808..0 => "negative",
+    0..=9223372036854775807 => "nonnegative"
+};
+println(polarity);
+
+const dynamic_word: str = str_concat("El", "ba");
+const word_match: str = match (dynamic_word) {
+    "Elba" => "string value match",
+    _ => "unexpected"
+};
+println(word_match);
+
+const decimal: float = -1.5;
+const decimal_match: str = match (decimal) {
+    -1.5 => "negative decimal",
+    _ => "other decimal"
+};
+println(decimal_match);
+
 println("");
 println("=== Match Expression Complete! ===");

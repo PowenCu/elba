@@ -84,10 +84,16 @@ pub const Value = union(enum) {
     unit: void,
     null_value: void,
     struct_instance: StructInstance,
-    array: []Value,
+    array: ArrayValue,
+
+    pub const ArrayValue = struct {
+        elements: []Value,
+        element_type: ?Type,
+    };
 
     pub const StructInstance = struct {
         type_name: []const u8,
+        type_args: []const Type = &.{},
         fields: std.StringHashMap(Value),
     };
 };
@@ -116,6 +122,13 @@ pub const Expr = union(enum) {
     array_literal: ArrayLiteral,
     array_access: ArrayAccess,
     is_check: IsCheck,
+    optional_unwrap: *Expr,
+    optional_coalesce: OptionalCoalesce,
+
+    pub const OptionalCoalesce = struct {
+        optional: *Expr,
+        fallback: *Expr,
+    };
 
     pub const For = struct {
         iterator: []const u8, // Variable name for iterator
@@ -165,10 +178,17 @@ pub const Expr = union(enum) {
         expr: *Expr,
         check_type: Type,
         is_not: bool, // true for "is not", false for "is"
+        // Filled by the typechecker when the expression has a concrete,
+        // non-tagged type. The pointer permits annotation through a const AST.
+        static_result: *?bool,
+        resolved_type: *?Type,
+        resolved_source_type: *?Type,
     };
 
     pub const ArrayLiteral = struct {
         elements: []*Expr,
+        resolved_element_type: *?Type,
+        resolved_array_type: *?Type,
     };
 
     pub const ArrayAccess = struct {
@@ -269,7 +289,9 @@ pub const Stmt = union(enum) {
     struct_decl: StructDecl,
     type_alias: TypeAlias,
     import_stmt: ImportStmt,
-    return_stmt: *Expr,
+    return_stmt: ?*Expr,
+    break_stmt: void,
+    continue_stmt: void,
     expr_stmt: *Expr,
 
     pub const ImportStmt = struct {

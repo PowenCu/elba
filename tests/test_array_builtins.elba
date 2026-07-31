@@ -1,0 +1,19 @@
+const values: []int = [1, 2, 3];
+const extended: []int = array_push(values, 4);
+const shortened: []int = array_pop(extended);
+const sliced: []int = array_slice(shortened, 1, 3);
+
+println(int_to_str(array_len(extended)));
+println(int_to_str(array_len(shortened)));
+println(int_to_str(array_len(sliced)));
+println(int_to_str(sliced[0]));
+println(int_to_str(sliced[1]));
+
+const words: []str = ["one", "two"];
+const extended_words: []str = array_push(words, "three");
+println(extended_words[2]);
+
+const empty: []int = [];
+const filled: []int = array_push(empty, 99);
+println(int_to_str(array_len(empty)));
+println(int_to_str(filled[0]));

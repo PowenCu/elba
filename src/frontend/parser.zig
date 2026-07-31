@@ -39,6 +39,98 @@ pub const Parser = struct {
         self.advance();
     }
 
+    fn parseStringLiteral(
+        self: *Parser,
+        expected_message: []const u8,
+    ) error{ UnexpectedToken, OutOfMemory, InvalidCharacter }![]const u8 {
+        if (self.current.tag == .unterminated_string) {
+            self.error_reporter.reportTokenError(
+                "error",
+                "Unterminated string literal",
+                self.current,
+            );
+            return error.InvalidCharacter;
+        }
+
+        if (self.current.tag != .string) {
+            self.error_reporter.reportTokenError(
+                "error",
+                expected_message,
+                self.current,
+            );
+            return error.UnexpectedToken;
+        }
+
+        const token = self.current;
+        const value = try self.decodeStringLiteral(token);
+        self.advance();
+        return value;
+    }
+
+    fn decodeStringLiteral(
+        self: *Parser,
+        token: Token,
+    ) error{ OutOfMemory, InvalidCharacter }![]const u8 {
+        const raw = self.source[token.loc.start + 1 .. token.loc.end - 1];
+        if (std.mem.indexOfScalar(u8, raw, '\\') == null) {
+            return raw;
+        }
+
+        var decoded = try std.ArrayList(u8).initCapacity(self.allocator, raw.len);
+        errdefer decoded.deinit(self.allocator);
+
+        var index: usize = 0;
+        while (index < raw.len) {
+            if (raw[index] != '\\') {
+                try decoded.append(self.allocator, raw[index]);
+                index += 1;
+                continue;
+            }
+
+            if (index + 1 >= raw.len) {
+                self.error_reporter.reportError(
+                    "error",
+                    "Trailing backslash in string literal",
+                    .{
+                        .start = token.loc.start + 1 + index,
+                        .end = token.loc.start + 2 + index,
+                    },
+                );
+                return error.InvalidCharacter;
+            }
+
+            const escaped: u8 = switch (raw[index + 1]) {
+                'n' => '\n',
+                'r' => '\r',
+                't' => '\t',
+                '\\' => '\\',
+                '"' => '"',
+                else => {
+                    var message_buffer: [96]u8 = undefined;
+                    const message = std.fmt.bufPrint(
+                        &message_buffer,
+                        "Unsupported escape sequence '{s}'",
+                        .{raw[index .. index + 2]},
+                    ) catch "Unsupported escape sequence";
+                    self.error_reporter.reportError(
+                        "error",
+                        message,
+                        .{
+                            .start = token.loc.start + 1 + index,
+                            .end = token.loc.start + 3 + index,
+                        },
+                    );
+                    return error.InvalidCharacter;
+                },
+            };
+
+            try decoded.append(self.allocator, escaped);
+            index += 2;
+        }
+
+        return try decoded.toOwnedSlice(self.allocator);
+    }
+
     pub fn parseStmt(self: *Parser) error{ UnexpectedToken, OutOfMemory, InvalidCharacter, Overflow }!?Stmt {
         // Check for invalid tokens from lexer
         if (self.current.tag == .invalid) {
@@ -86,9 +178,25 @@ pub const Parser = struct {
         // Return statements
         if (self.current.tag == .return_kw) {
             self.advance();
+            if (self.current.tag == .semicolon) {
+                self.advance();
+                return Stmt{ .return_stmt = null };
+            }
             const expr = try self.parseExpr();
             try self.expect(.semicolon);
             return Stmt{ .return_stmt = expr };
+        }
+
+        // Loop control statements
+        if (self.current.tag == .break_kw) {
+            self.advance();
+            try self.expect(.semicolon);
+            return Stmt{ .break_stmt = {} };
+        }
+        if (self.current.tag == .continue_kw) {
+            self.advance();
+            try self.expect(.semicolon);
+            return Stmt{ .continue_stmt = {} };
         }
 
         // const or let declarations
@@ -148,31 +256,11 @@ pub const Parser = struct {
     }
 
     fn parseTypeAnnotation(self: *Parser) error{ UnexpectedToken, OutOfMemory, InvalidCharacter, Overflow }!Type {
-        // Handle array types: []int, []str, etc.
-        if (self.current.tag == .lbracket) {
-            self.advance(); // consume '['
-
-            if (self.current.tag != .rbracket) {
-                self.error_reporter.reportTokenError(
-                    "error",
-                    "Expected ']' immediately after '[' in array type (syntax: []int, []str, etc.)",
-                    self.current,
-                );
-                return error.UnexpectedToken;
-            }
-            self.advance(); // consume ']'
-
-            // Now parse the element type
-            const elem_type = try self.parseTypeAnnotation();
-
-            // Allocate the element type on the heap
-            const elem_type_ptr = try self.allocator.create(Type);
-            elem_type_ptr.* = elem_type;
-
-            return Type{ .array = elem_type_ptr };
-        }
-
-        const type_tag = switch (self.current.tag) {
+        // Arrays are base types. Optional and union operators below wrap the
+        // completed array type instead of being captured by its element.
+        const type_tag = if (self.current.tag == .lbracket)
+            try self.parseBasicType()
+        else switch (self.current.tag) {
             .int_kw => blk: {
                 self.advance();
                 break :blk Type.int;
@@ -592,17 +680,7 @@ pub const Parser = struct {
             // Expect 'from'
             try self.expect(.from_kw);
 
-            // Expect string literal for module path
-            if (self.current.tag != .string) {
-                self.error_reporter.reportTokenError(
-                    "error",
-                    "Expected string literal for module path",
-                    self.current,
-                );
-                return error.UnexpectedToken;
-            }
-            const module_path = self.source[self.current.loc.start + 1 .. self.current.loc.end - 1]; // Strip quotes
-            self.advance();
+            const module_path = try self.parseStringLiteral("Expected string literal for module path");
 
             try self.expect(.semicolon);
 
@@ -613,16 +691,7 @@ pub const Parser = struct {
         }
 
         // Otherwise, it's a full import: take "file"
-        if (self.current.tag != .string) {
-            self.error_reporter.reportTokenError(
-                "error",
-                "Expected string literal for module path",
-                self.current,
-            );
-            return error.UnexpectedToken;
-        }
-        const module_path = self.source[self.current.loc.start + 1 .. self.current.loc.end - 1]; // Strip quotes
-        self.advance();
+        const module_path = try self.parseStringLiteral("Expected string literal for module path");
 
         try self.expect(.semicolon);
 
@@ -776,30 +845,63 @@ pub const Parser = struct {
 
     // Assignment (lowest precedence in expressions)
     fn parseAssignment(self: *Parser) error{ UnexpectedToken, OutOfMemory, InvalidCharacter, Overflow }!*Expr {
-        const left = try self.parseLogicalOr();
+        const left = try self.parseCoalesce();
 
         // Check if this is an assignment
         if (self.current.tag == .equal) {
-            // Left side must be a variable
-            if (left.* != .variable) {
-                std.debug.print("Assignment target must be a variable\n", .{});
-                return error.UnexpectedToken;
-            }
-
             self.advance();
             const value = try self.parseAssignment(); // Right associative
 
             const expr = try self.allocator.create(Expr);
-            expr.* = .{
-                .assignment = .{
-                    .name = left.variable,
-                    .value = value,
+            expr.* = switch (left.*) {
+                .variable => |name| .{
+                    .assignment = .{
+                        .name = name,
+                        .value = value,
+                    },
+                },
+                .field_access => |access| .{
+                    .field_assignment = .{
+                        .object = access.object,
+                        .field_name = access.field_name,
+                        .value = value,
+                    },
+                },
+                .array_access => |access| .{
+                    .array_assignment = .{
+                        .array = access.array,
+                        .index = access.index,
+                        .value = value,
+                    },
+                },
+                else => {
+                    self.error_reporter.reportTokenError(
+                        "error",
+                        "Assignment target must be a variable, struct field, or array element",
+                        self.current,
+                    );
+                    return error.UnexpectedToken;
                 },
             };
             return expr;
         }
 
         return left;
+    }
+
+    // Null coalescing is right-associative and binds more tightly than assignment.
+    fn parseCoalesce(self: *Parser) error{ UnexpectedToken, OutOfMemory, InvalidCharacter, Overflow }!*Expr {
+        const optional = try self.parseLogicalOr();
+        if (self.current.tag != .question_question) return optional;
+
+        self.advance();
+        const fallback = try self.parseCoalesce();
+        const expr = try self.allocator.create(Expr);
+        expr.* = .{ .optional_coalesce = .{
+            .optional = optional,
+            .fallback = fallback,
+        } };
+        return expr;
     }
 
     // Logical OR
@@ -896,6 +998,12 @@ pub const Parser = struct {
 
                 // Parse the type to check against
                 const check_type = try self.parseTypeAnnotation();
+                const static_result = try self.allocator.create(?bool);
+                static_result.* = null;
+                const resolved_type = try self.allocator.create(?Type);
+                resolved_type.* = null;
+                const resolved_source_type = try self.allocator.create(?Type);
+                resolved_source_type.* = null;
 
                 const new_left = try self.allocator.create(Expr);
                 new_left.* = left.*;
@@ -905,6 +1013,9 @@ pub const Parser = struct {
                         .expr = new_left,
                         .check_type = check_type,
                         .is_not = is_not,
+                        .static_result = static_result,
+                        .resolved_type = resolved_type,
+                        .resolved_source_type = resolved_source_type,
                     },
                 };
                 left = expr;
@@ -1123,6 +1234,11 @@ pub const Parser = struct {
                     .index = index,
                 } };
                 expr = access_expr;
+            } else if (self.current.tag == .bang) {
+                self.advance();
+                const unwrap_expr = try self.allocator.create(Expr);
+                unwrap_expr.* = .{ .optional_unwrap = expr };
+                expr = unwrap_expr;
             } else {
                 break;
             }
@@ -1147,10 +1263,8 @@ pub const Parser = struct {
                 expr.* = .{ .float_literal = value };
                 return expr;
             },
-            .string => {
-                // Skip the quotes
-                const value = self.source[self.current.loc.start + 1 .. self.current.loc.end - 1];
-                self.advance();
+            .string, .unterminated_string => {
+                const value = try self.parseStringLiteral("Expected string literal");
                 const expr = try self.allocator.create(Expr);
                 expr.* = .{ .string_literal = value };
                 return expr;
@@ -1293,8 +1407,14 @@ pub const Parser = struct {
                 try self.expect(.rbracket);
 
                 const expr = try self.allocator.create(Expr);
+                const resolved_element_type = try self.allocator.create(?Type);
+                resolved_element_type.* = null;
+                const resolved_array_type = try self.allocator.create(?Type);
+                resolved_array_type.* = null;
                 expr.* = .{ .array_literal = .{
                     .elements = try elements.toOwnedSlice(self.allocator),
+                    .resolved_element_type = resolved_element_type,
+                    .resolved_array_type = resolved_array_type,
                 } };
                 return expr;
             },
@@ -1326,7 +1446,12 @@ pub const Parser = struct {
 
         while (self.current.tag != .rbrace and self.current.tag != .eof) {
             // Try to parse a statement first (const/let/fn/return/expr with semicolon)
-            if (self.current.tag == .const_kw or self.current.tag == .let_kw or self.current.tag == .return_kw) {
+            if (self.current.tag == .const_kw or
+                self.current.tag == .let_kw or
+                self.current.tag == .return_kw or
+                self.current.tag == .break_kw or
+                self.current.tag == .continue_kw)
+            {
                 const stmt = (try self.parseStmt()).?;
                 try statements.append(self.allocator, stmt);
             } else {
@@ -1474,22 +1599,9 @@ pub const Parser = struct {
         // Expect opening parenthesis
         try self.expect(.lparen);
 
-        // Parse expression to match - must be simple to avoid consuming the block
-        // For simplicity, only support variables for now
-        if (self.current.tag != .identifier) {
-            self.error_reporter.reportTokenError(
-                "error",
-                "Expected variable to match",
-                self.current,
-            );
-            return error.UnexpectedToken;
-        }
-
-        const match_var = self.source[self.current.loc.start..self.current.loc.end];
-        self.advance();
-
-        const match_expr_ptr = try self.allocator.create(Expr);
-        match_expr_ptr.* = .{ .variable = match_var };
+        // Match subjects are ordinary expressions. The closing parenthesis is
+        // the natural delimiter, so computed values and calls are safe here.
+        const match_expr_ptr = try self.parseExpr();
 
         // Expect closing parenthesis
         try self.expect(.rparen);
@@ -1541,6 +1653,37 @@ pub const Parser = struct {
         return expr;
     }
 
+    const PatternNumber = union(enum) {
+        int: i64,
+        float: f64,
+    };
+
+    fn parsePatternNumber(self: *Parser) error{ UnexpectedToken, OutOfMemory, InvalidCharacter, Overflow }!PatternNumber {
+        const negative = self.current.tag == .minus;
+        if (negative) self.advance();
+        if (self.current.tag == .float) {
+            const text = self.source[self.current.loc.start..self.current.loc.end];
+            const value = try std.fmt.parseFloat(f64, text);
+            self.advance();
+            return .{ .float = if (negative) -value else value };
+        }
+        if (self.current.tag != .number) {
+            self.error_reporter.reportTokenError("error", "Expected numeric pattern", self.current);
+            return error.UnexpectedToken;
+        }
+        const text = self.source[self.current.loc.start..self.current.loc.end];
+        const magnitude = try std.fmt.parseInt(u64, text, 10);
+        self.advance();
+        if (!negative) {
+            if (magnitude > std.math.maxInt(i64)) return error.Overflow;
+            return .{ .int = @intCast(magnitude) };
+        }
+        const min_magnitude = @as(u64, std.math.maxInt(i64)) + 1;
+        if (magnitude > min_magnitude) return error.Overflow;
+        if (magnitude == min_magnitude) return .{ .int = std.math.minInt(i64) };
+        return .{ .int = -@as(i64, @intCast(magnitude)) };
+    }
+
     fn parsePattern(self: *Parser) error{ UnexpectedToken, OutOfMemory, InvalidCharacter, Overflow }!Expr.Pattern {
         // Wildcard pattern: _
         if (self.current.tag == .identifier) {
@@ -1557,10 +1700,10 @@ pub const Parser = struct {
         }
 
         // Literal patterns
-        if (self.current.tag == .number) {
-            const num_str = self.source[self.current.loc.start..self.current.loc.end];
-            const value = try std.fmt.parseInt(i64, num_str, 10);
-            self.advance();
+        if (self.current.tag == .number or self.current.tag == .float or self.current.tag == .minus) {
+            const number = try self.parsePatternNumber();
+            if (number == .float) return Expr.Pattern{ .literal = Value{ .float = number.float } };
+            const value = number.int;
 
             // Check for range pattern: 1..10 or 1..=10
             if (self.current.tag == .dot_dot) {
@@ -1572,7 +1715,7 @@ pub const Parser = struct {
                     self.advance();
                 }
 
-                if (self.current.tag != .number) {
+                if (self.current.tag != .number and self.current.tag != .float and self.current.tag != .minus) {
                     self.error_reporter.reportTokenError(
                         "error",
                         "Expected number after '..' or '..=' in range pattern",
@@ -1581,9 +1724,12 @@ pub const Parser = struct {
                     return error.UnexpectedToken;
                 }
 
-                const end_str = self.source[self.current.loc.start..self.current.loc.end];
-                const end_value = try std.fmt.parseInt(i64, end_str, 10);
-                self.advance();
+                const end_number = try self.parsePatternNumber();
+                if (end_number != .int) {
+                    self.error_reporter.reportTokenError("error", "Integer ranges cannot use float bounds", self.current);
+                    return error.UnexpectedToken;
+                }
+                const end_value = end_number.int;
 
                 return Expr.Pattern{ .range = .{
                     .start = value,
@@ -1595,9 +1741,8 @@ pub const Parser = struct {
             return Expr.Pattern{ .literal = Value{ .int = value } };
         }
 
-        if (self.current.tag == .string) {
-            const str_val = self.source[self.current.loc.start + 1 .. self.current.loc.end - 1];
-            self.advance();
+        if (self.current.tag == .string or self.current.tag == .unterminated_string) {
+            const str_val = try self.parseStringLiteral("Expected string literal pattern");
             return Expr.Pattern{ .literal = Value{ .string = str_val } };
         }
 
@@ -1624,3 +1769,102 @@ pub const Parser = struct {
         return error.UnexpectedToken;
     }
 };
+
+test "parser decodes supported string escapes" {
+    const source =
+        \\const value: str = "line one\nline two\t\"Elba\"\\done\r";
+    ;
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    var lexer = Lexer.init(source);
+    const reporter = ErrorReporter.init(source, "string_escapes.elba");
+    var parser = try Parser.init(arena.allocator(), &lexer, source, &reporter);
+    const statement = (try parser.parseStmt()).?;
+
+    const declaration = switch (statement) {
+        .const_decl => |declaration| declaration,
+        else => return error.TestUnexpectedResult,
+    };
+    const value = switch (declaration.value.*) {
+        .string_literal => |value| value,
+        else => return error.TestUnexpectedResult,
+    };
+
+    try std.testing.expectEqualStrings(
+        "line one\nline two\t\"Elba\"\\done\r",
+        value,
+    );
+}
+
+test "parser decodes escaped backslashes in import paths" {
+    const source =
+        \\take "modules\\math.elba";
+    ;
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    var lexer = Lexer.init(source);
+    const reporter = ErrorReporter.init(source, "import.elba");
+    var parser = try Parser.init(arena.allocator(), &lexer, source, &reporter);
+    const statement = (try parser.parseStmt()).?;
+
+    const import_statement = switch (statement) {
+        .import_stmt => |import_statement| import_statement,
+        else => return error.TestUnexpectedResult,
+    };
+    try std.testing.expectEqualStrings("modules\\math.elba", import_statement.module_path);
+}
+
+test "parser rejects unsupported string escapes" {
+    const source =
+        \\const value: str = "bad\q";
+    ;
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    var lexer = Lexer.init(source);
+    const reporter = ErrorReporter.init(source, "invalid_escape.elba");
+    var parser = try Parser.init(arena.allocator(), &lexer, source, &reporter);
+
+    try std.testing.expectError(error.InvalidCharacter, parser.parseStmt());
+}
+
+test "parser rejects unterminated string literals" {
+    const source =
+        \\const value: str = "missing end;
+    ;
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    var lexer = Lexer.init(source);
+    const reporter = ErrorReporter.init(source, "unterminated.elba");
+    var parser = try Parser.init(arena.allocator(), &lexer, source, &reporter);
+
+    try std.testing.expectError(error.InvalidCharacter, parser.parseStmt());
+}
+
+test "parser builds unwrap and right-associative coalescing expressions" {
+    const source = "const value: int = first! ?? second ?? 3;";
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    var lexer = Lexer.init(source);
+    const reporter = ErrorReporter.init(source, "optional_operations.elba");
+    var parser = try Parser.init(arena.allocator(), &lexer, source, &reporter);
+    const statement = (try parser.parseStmt()).?;
+    const declaration = switch (statement) {
+        .const_decl => |declaration| declaration,
+        else => return error.TestUnexpectedResult,
+    };
+    const outer = switch (declaration.value.*) {
+        .optional_coalesce => |coalesce| coalesce,
+        else => return error.TestUnexpectedResult,
+    };
+    try std.testing.expect(outer.optional.* == .optional_unwrap);
+    try std.testing.expect(outer.fallback.* == .optional_coalesce);
+}

@@ -1,0 +1,2 @@
+// Expected to fail: the entire string must be a valid integer.
+println(int_to_str(str_to_int("12x")));

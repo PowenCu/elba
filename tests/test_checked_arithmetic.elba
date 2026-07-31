@@ -1,0 +1,19 @@
+const maximum: int = str_to_int("9223372036854775807");
+const minimum: int = str_to_int("-9223372036854775808");
+
+println(int_to_str(maximum + 0));
+println(int_to_str(minimum - 0));
+println(int_to_str(maximum * 1));
+println(int_to_str(minimum / 1));
+println(int_to_str(3 ** 34));
+
+let endpoint_visits: int = 0;
+for (value in maximum..=maximum) {
+    endpoint_visits = endpoint_visits + 1;
+    continue;
+}
+for (value in minimum..=minimum) {
+    endpoint_visits = endpoint_visits + 1;
+    continue;
+}
+println(int_to_str(endpoint_visits));

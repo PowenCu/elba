@@ -1,0 +1,6 @@
+const value: str = match (true) {
+    true => "first",
+    true => "duplicate",
+    false => "false"
+};
+println(value);

@@ -1,0 +1,90 @@
+// Empty array literals receive their type from every expected-type position.
+
+println("=== Contextual Arrays ===");
+
+struct Grid {
+    rows: [][]int;
+}
+
+struct Box<T> {
+    value: T;
+}
+
+type IntList = []int;
+type MaybeList = IntList?;
+type ListOrText = IntList | str;
+type IntsOrStrings = []int | []str;
+
+fn empty_rows() -> [][]int {
+    return [];
+}
+
+fn empty_tail() -> []int {
+    []
+}
+
+fn choose_values(use_empty: bool) -> []int {
+    if (use_empty) { [] } else { [1, 2] }
+}
+
+fn match_values(use_empty: bool) -> []int {
+    match (use_empty) {
+        true => [],
+        false => [3]
+    }
+}
+
+fn row_count(rows: [][]int) -> int {
+    return array_len(rows);
+}
+
+fn empty_maybe_list() -> MaybeList {
+    return [];
+}
+
+fn empty_list_choice() -> ListOrText {
+    return [];
+}
+
+println(str_concat("Empty argument rows: ", int_to_str(row_count([]))));
+println(str_concat("Empty return rows: ", int_to_str(array_len(empty_rows()))));
+println(str_concat("Empty tail values: ", int_to_str(array_len(empty_tail()))));
+println(str_concat("Empty if values: ", int_to_str(array_len(choose_values(true)))));
+println(str_concat("Empty match values: ", int_to_str(array_len(match_values(true)))));
+
+let maybe_list: MaybeList = [];
+println(bool_to_str(maybe_list is []int));
+println(str_concat("Optional empty payload: ", int_to_str(array_len(maybe_list!))));
+println(bool_to_str(empty_maybe_list() is []int));
+
+let list_choice: ListOrText = [];
+println(bool_to_str(list_choice is []int));
+println(bool_to_str(empty_list_choice() is []int));
+
+let array_choice: IntsOrStrings = [1, 2];
+println(bool_to_str(array_choice is []int));
+println(bool_to_str(array_choice is not []str));
+array_choice = ["one", "two"];
+println(bool_to_str(array_choice is []str));
+const typed_empty_ints: []int = [];
+array_choice = typed_empty_ints;
+println(bool_to_str(array_choice is []int));
+
+let grid: Grid = Grid { rows: [] };
+grid.rows = [[1, 2], [], [3]];
+println(str_concat("Nested field rows: ", int_to_str(array_len(grid.rows))));
+grid.rows = [];
+println(str_concat("Cleared field rows: ", int_to_str(array_len(grid.rows))));
+
+let rows: [][]int = [[1, 2]];
+rows[0] = [];
+println(str_concat("Assigned empty row: ", int_to_str(array_len(rows[0]))));
+
+const extended: [][]int = array_push(rows, []);
+println(str_concat("Pushed empty row: ", int_to_str(array_len(extended[1]))));
+
+let boxed: Box<[]int> = Box<[]int> { value: [] };
+boxed.value = [];
+println(str_concat("Generic empty field: ", int_to_str(array_len(boxed.value))));
+
+println("=== Contextual Arrays Complete ===");

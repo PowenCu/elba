@@ -1,0 +1,59 @@
+// Operators and precedence
+
+println("=== Operators ===");
+
+const arithmetic: int = 2 + 3 * 4;
+const grouped: int = (2 + 3) * 4;
+const powered: int = 2 ** 5;
+const remainder: int = 17 % 5;
+
+println(str_concat("2 + 3 * 4 = ", int_to_str(arithmetic)));
+println(str_concat("(2 + 3) * 4 = ", int_to_str(grouped)));
+println(str_concat("2 ** 5 = ", int_to_str(powered)));
+println(str_concat("17 % 5 = ", int_to_str(remainder)));
+
+const float_arithmetic: float = 1 + 2.5 * 2;
+const float_remainder: float = 7.5 % 2.0;
+const float_power: float = 2.0 ** 3.0;
+const negative_float: float = -2.5;
+println(str_concat("1 + 2.5 * 2 = ", float_to_str(float_arithmetic)));
+println(str_concat("7.5 % 2.0 = ", float_to_str(float_remainder)));
+println(str_concat("2.0 ** 3.0 = ", float_to_str(float_power)));
+println(str_concat("-2.5 = ", float_to_str(negative_float)));
+
+const joined: str = "El" + "ba";
+println(str_concat("String +: ", joined));
+if (joined == "Elba" && joined != "elba" && 2.5 > 2) {
+    println("Typed string and float comparisons: true");
+} else {
+    println("Typed string and float comparisons: false");
+}
+
+if (42 is int && 42 is not float && joined is str) {
+    println("Primitive runtime type checks: true");
+} else {
+    println("Primitive runtime type checks: false");
+}
+
+type IntList = []int;
+const numbers: IntList = [1, 2, 3];
+const words: []str = ["one", "two"];
+const empty: []int = [];
+const matrix: [][]int = [[1, 2], [3, 4]];
+if (numbers is []int && numbers is IntList && numbers is not []str &&
+    words is []str && empty is []int && matrix is [][]int && matrix is not [][]str) {
+    println("Exact array type checks: true");
+} else {
+    println("Exact array type checks: false");
+}
+
+const logic: bool = (arithmetic == 14) && !false;
+const comparison: bool = powered >= grouped || remainder == 0;
+
+if (logic && comparison) {
+    println("Logical and comparison operators: true");
+} else {
+    println("Logical and comparison operators: false");
+}
+
+println("=== Operators Complete ===");

@@ -1,0 +1,117 @@
+// Optional and union values retain their active payload across every backend.
+
+println("=== Tagged Optional and Union Values ===");
+
+struct MaybeNumber {
+    value: int?;
+
+    fn has_value(self: MaybeNumber) -> bool {
+        return self.value != null;
+    }
+}
+
+struct Maybe<T> {
+    value: T?;
+}
+
+struct Variant {
+    value: int | str;
+
+    fn holds_string(self: Variant) -> bool {
+        return self.value is str;
+    }
+}
+
+struct Count {
+    value: int;
+}
+
+struct Label {
+    value: str;
+}
+
+fn pass_optional(value: int?) -> int? {
+    return value;
+}
+
+fn zero_optional() -> int? {
+    return 0;
+}
+
+fn integer_choice() -> int | str {
+    return 0;
+}
+
+let direct: int? = 0;
+println(bool_to_str(direct == null));
+println(bool_to_str(direct == zero_optional()));
+direct = null;
+println(bool_to_str(direct == null));
+direct = pass_optional(0);
+println(bool_to_str(direct != null));
+
+let inferred = zero_optional();
+println(bool_to_str(inferred != null));
+inferred = null;
+println(bool_to_str(inferred == null));
+
+let maybe_false: bool? = false;
+let maybe_zero_float: float? = 0.0;
+let maybe_empty: str? = "";
+println(bool_to_str(maybe_false != null));
+println(bool_to_str(maybe_zero_float != null));
+println(bool_to_str(maybe_empty != null));
+
+let maybe: MaybeNumber = MaybeNumber { value: 0 };
+println(bool_to_str(maybe.has_value()));
+maybe.value = null;
+println(bool_to_str(maybe.has_value()));
+
+let generic: Maybe<int> = Maybe<int> { value: 0 };
+println(bool_to_str(generic.value != null));
+generic.value = null;
+println(bool_to_str(generic.value == null));
+
+let choice: int | str = integer_choice();
+let other: int | str = 0;
+println(bool_to_str(choice is int));
+println(bool_to_str(choice == other));
+choice = "zero";
+other = "zero";
+println(bool_to_str(choice is str));
+println(bool_to_str(choice == other));
+
+let variant: Variant = Variant { value: 0 };
+println(bool_to_str(variant.value is int));
+variant.value = "variant";
+println(bool_to_str(variant.holds_string()));
+
+let aggregate: Count | Label = Count { value: 0 };
+let aggregate_copy: Count | Label = Count { value: 0 };
+println(bool_to_str(aggregate is Count));
+println(bool_to_str(aggregate is not Label));
+println(bool_to_str(aggregate == aggregate_copy));
+aggregate = Label { value: "zero" };
+aggregate_copy = Label { value: str_concat("ze", "ro") };
+println(bool_to_str(aggregate is Label));
+println(bool_to_str(aggregate is not Count));
+println(bool_to_str(aggregate == aggregate_copy));
+
+let optional_count: Count? = Count { value: 0 };
+let optional_count_copy: Count? = Count { value: 0 };
+println(bool_to_str(optional_count == optional_count_copy));
+optional_count_copy = null;
+println(bool_to_str(optional_count != optional_count_copy));
+
+let generic_variant: Maybe<int> | Maybe<str> = Maybe<int> { value: 0 };
+let generic_variant_copy: Maybe<int> | Maybe<str> = Maybe<int> { value: 0 };
+println(bool_to_str(generic_variant is Maybe<int>));
+println(bool_to_str(generic_variant is not Maybe<str>));
+println(bool_to_str(generic_variant == generic_variant_copy));
+generic_variant = Maybe<str> { value: "zero" };
+generic_variant_copy = Maybe<str> { value: str_concat("ze", "ro") };
+println(bool_to_str(generic_variant is Maybe<str>));
+println(bool_to_str(generic_variant is not Maybe<int>));
+println(bool_to_str(generic_variant == generic_variant_copy));
+
+println("=== Tagged Optional and Union Values Complete ===");

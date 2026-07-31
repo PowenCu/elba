@@ -75,18 +75,36 @@ println(str_concat("5! = ", int_to_str(factorial_loop(5))));
 println(str_concat("7! = ", int_to_str(factorial_loop(7))));
 println("");
 
-// Break condition
-println("6. Loop with condition:");
+// Break and continue
+println("6. Loop control:");
 let search: int = 0;
 let found: int = 0;
 while (search < 100) {
+    search = search + 1;
+    if (search % 2 != 0) {
+        continue;
+    }
     if (search * search == 64) {
         found = search;
-        search = 100;
+        break;
     }
-    search = search + 1;
 }
 println(str_concat("Square root of 64 is approximately: ", int_to_str(found)));
+println("");
+
+// Bare return from a unit function
+println("7. Early unit return:");
+fn print_until(limit: int) {
+    let value: int = 1;
+    while (true) {
+        if (value > limit) {
+            return;
+        }
+        println(str_concat("  value = ", int_to_str(value)));
+        value = value + 1;
+    }
+}
+print_until(3);
 println("");
 
 println("=== Control Flow Complete ===");

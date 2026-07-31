@@ -1,0 +1,2 @@
+const number: int = 1;
+println(bool_to_str(number == null));

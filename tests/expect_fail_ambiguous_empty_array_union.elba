@@ -1,0 +1,5 @@
+type IntsOrStrings = []int | []str;
+
+// Both union members are arrays, so [] has no unique element type.
+const ambiguous: IntsOrStrings = [];
+println(int_to_str(array_len(ambiguous)));

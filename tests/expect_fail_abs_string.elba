@@ -1,0 +1,2 @@
+// abs accepts numeric values only.
+println(abs("Elba"));

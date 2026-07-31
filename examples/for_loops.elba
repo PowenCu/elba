@@ -20,4 +20,34 @@ for (fruit in fruits) {
 }
 
 println("");
+
+println("Range loop with continue and break:");
+let selected_sum: int = 0;
+for (value in 1..=8) {
+    if (value == 2) {
+        continue;
+    }
+    if (value == 6) {
+        break;
+    }
+    selected_sum = selected_sum + value;
+}
+println(str_concat("Selected sum: ", int_to_str(selected_sum)));
+
+println("");
+
+println("Descending range:");
+let descending_sum: int = 0;
+for (value in 5..=1) {
+    if (value == 4) {
+        continue;
+    }
+    if (value == 2) {
+        break;
+    }
+    descending_sum = descending_sum + value;
+}
+println(str_concat("Descending sum: ", int_to_str(descending_sum)));
+
+println("");
 println("=== For Loop Complete! ===");

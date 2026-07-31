@@ -20,6 +20,7 @@ pub const ValueType = enum {
     struct_type,
     function,
     optional,
+    union_type,
 
     /// Convert from runtime TypeTag
     pub fn fromRuntimeTag(tag: runtime.TypeTag) ValueType {
@@ -33,7 +34,7 @@ pub const ValueType = enum {
             .struct_type => .struct_type,
             .function => .function,
             .optional => .optional,
-            .union_type => .struct_type, // unions represented as structs at runtime
+            .union_type => .union_type,
         };
     }
 
@@ -49,9 +50,34 @@ pub const ValueType = enum {
             .struct_type => .struct_type,
             .function => .function,
             .optional => .optional,
+            .union_type => .union_type,
         };
     }
 };
+
+/// Instruction operands use zero for "type unknown" and store concrete value
+/// types as their enum tag plus one. Binary instructions pack the left and
+/// right operand types into the low two bytes of `operand3`.
+pub fn encodeValueType(value_type: ?ValueType) i64 {
+    return if (value_type) |typ| @as(i64, @intFromEnum(typ)) + 1 else 0;
+}
+
+pub fn decodeValueType(encoded: i64) ?ValueType {
+    if (encoded <= 0 or encoded > 0xff) return null;
+    return std.meta.intToEnum(ValueType, @as(std.meta.Tag(ValueType), @intCast(encoded - 1))) catch null;
+}
+
+pub fn encodeBinaryTypes(left: ?ValueType, right: ?ValueType) i64 {
+    return encodeValueType(left) | (encodeValueType(right) << 8);
+}
+
+pub fn decodeBinaryLeft(encoded: i64) ?ValueType {
+    return decodeValueType(encoded & 0xff);
+}
+
+pub fn decodeBinaryRight(encoded: i64) ?ValueType {
+    return decodeValueType((encoded >> 8) & 0xff);
+}
 
 pub const Register = u32;
 
@@ -64,8 +90,6 @@ pub const Opcode = enum {
     load_null, // Load null value
     load_var, // Load variable from environment
     store_var, // Store to variable
-    load_global, // Load global variable
-    store_global, // Store global variable
 
     // Arithmetic
     add,
@@ -94,58 +118,34 @@ pub const Opcode = enum {
     jump_if_false, // Conditional jump
     jump_if_true, // Conditional jump
     call, // Function call
-    call_indirect, // Call function pointer on stack
     ret, // Return from function
-    ret_void, // Return void (no value)
 
     // Stack operations
     pop, // Pop value from stack
     dup, // Duplicate top of stack
-    swap, // Swap top two stack values
-    rot, // Rotate top 3 values (a b c -> b c a)
-
-    // Built-in functions
-    builtin_call, // Call builtin function
+    stack_reset, // Compiler-only synchronization at value-less control-flow joins
 
     // Array operations
     array_new, // Create new array with capacity
-    array_literal, // Create array from N stack values
     array_get, // Get array element
     array_set, // Set array element
     array_len, // Get array length
-    array_push, // Push element to array
-    array_pop, // Pop element from array
 
     // Struct operations
     struct_new, // Create new struct
     field_get, // Get struct field by index
-    field_get_name, // Get struct field by name
     field_set, // Set struct field by index
-    field_set_name, // Set struct field by name
-    method_call, // Call method on struct
 
     // Optional operations
     optional_wrap, // Wrap value in optional (T -> T?)
     optional_unwrap, // Unwrap optional (T? -> T, error if null)
     optional_is_null, // Check if optional is null
 
-    // String operations
-    str_concat, // Concatenate two strings
-    str_len, // Get string length
-
     // Type operations
     type_check, // Check type (is)
-    type_check_not, // Check type negated (is not)
-    cast, // Type cast
-
-    // Memory/scope
-    enter_scope, // Enter new scope
-    leave_scope, // Leave scope (cleanup locals)
 
     // Special
     halt, // Stop execution
-    nop, // No operation
-    debug_print, // Debug: print stack top
 };
 
 pub const Instruction = struct {
@@ -293,6 +293,17 @@ pub const Builder = struct {
         });
     }
 
+    /// Add an instruction with string data and all three integer operands.
+    pub fn emitFullWithString(self: *Builder, op: Opcode, str: []const u8, op1: i64, op2: i64, op3: i64) !void {
+        try self.instructions.append(self.allocator, .{
+            .op = op,
+            .operand1 = op1,
+            .operand2 = op2,
+            .operand3 = op3,
+            .string_data = str,
+        });
+    }
+
     /// Intern a string and return its index
     pub fn internString(self: *Builder, str: []const u8) !usize {
         if (self.string_pool.get(str)) |index| {
@@ -323,6 +334,24 @@ pub const Builder = struct {
         }
         // Fallback to global string interning (for compatibility)
         return try self.internString(field_name);
+    }
+
+    /// Resolve a field when the receiver's concrete type was erased from the IR.
+    /// This is safe when every registered struct using the name assigns it the
+    /// same index, which is common for nested generic containers.
+    pub fn getFieldIndexByName(self: *Builder, field_name: []const u8) !usize {
+        var resolved_index: ?usize = null;
+        var iterator = self.struct_fields.iterator();
+        while (iterator.next()) |entry| {
+            if (entry.value_ptr.get(field_name)) |index| {
+                if (resolved_index) |resolved| {
+                    if (resolved != index) return try self.internString(field_name);
+                } else {
+                    resolved_index = index;
+                }
+            }
+        }
+        return resolved_index orelse try self.internString(field_name);
     }
 
     /// Get current instruction position (for labels)
@@ -399,7 +428,6 @@ pub fn printProgram(program: Program, writer: anytype) !void {
                 },
                 .jump, .jump_if_false, .jump_if_true => std.debug.print(" -> {d}", .{inst.operand1}),
                 .call => std.debug.print(" {s}({d})", .{ inst.string_data orelse "?", inst.operand2 }),
-                .builtin_call => std.debug.print(" {s}({d})", .{ inst.string_data orelse "?", inst.operand2 }),
                 .array_new => std.debug.print(" size={d}", .{inst.operand1}),
                 .struct_new => std.debug.print(" fields={d}", .{inst.operand1}),
                 .field_get, .field_set => std.debug.print(" field_idx={d}", .{inst.operand1}),
@@ -473,7 +501,6 @@ pub fn writeProgramToFile(program: Program, file: std.fs.File, allocator: std.me
                 },
                 .jump, .jump_if_false, .jump_if_true => try writer.print(" -> {d}", .{inst.operand1}),
                 .call => try writer.print(" {s}({d})", .{ inst.string_data orelse "?", inst.operand2 }),
-                .builtin_call => try writer.print(" {s}({d})", .{ inst.string_data orelse "?", inst.operand2 }),
                 .array_new => try writer.print(" size={d}", .{inst.operand1}),
                 .struct_new => try writer.print(" fields={d}", .{inst.operand1}),
                 .field_get, .field_set => try writer.print(" field_idx={d}", .{inst.operand1}),

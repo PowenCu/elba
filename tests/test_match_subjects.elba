@@ -1,0 +1,16 @@
+const arithmetic: str = match (2 * 3) {
+    6 => "six",
+    _ => "other"
+};
+
+fn answer() -> int {
+    return 42;
+}
+
+const called: str = match (answer()) {
+    42 => "answer",
+    _ => "other"
+};
+
+println(arithmetic);
+println(called);

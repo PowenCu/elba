@@ -1,0 +1,2 @@
+// Expected to fail: leading whitespace is not accepted by Elba's strict parser.
+println(float_to_str(str_to_float(" 1.5")));

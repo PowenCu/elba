@@ -1,0 +1,2 @@
+// Expected to fail: continue cannot target a loop from the top level.
+continue;

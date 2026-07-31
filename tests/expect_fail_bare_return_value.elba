@@ -1,0 +1,4 @@
+// Expected to fail: a value-returning function cannot return without a value.
+fn value() -> int {
+    return;
+}

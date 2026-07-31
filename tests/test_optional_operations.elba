@@ -1,0 +1,30 @@
+struct Point {
+    x: int;
+    y: int;
+}
+
+fn fallback() -> int {
+    println("fallback");
+    return 9;
+}
+
+let present: int? = 4;
+let absent: int? = null;
+println(int_to_str(present!));
+println(int_to_str(present ?? fallback()));
+println(int_to_str(absent ?? fallback()));
+
+let maybe_false: bool? = false;
+let maybe_empty: str? = "";
+println(bool_to_str(maybe_false!));
+println(int_to_str(str_len(maybe_empty!)));
+println(bool_to_str(maybe_false ?? true));
+println(int_to_str(str_len(maybe_empty ?? "fallback")));
+println(int_to_str(null ?? 5));
+
+let point: Point? = Point { x: 1; y: 2 };
+println(int_to_str(point!.y));
+const default_point: Point = Point { x: 7; y: 8 };
+println(int_to_str((point ?? default_point).x));
+point = null;
+println(int_to_str((point ?? default_point).y));

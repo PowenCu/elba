@@ -1,0 +1,28 @@
+// String escape sequence regression coverage.
+
+const lines: str = "line one\nline two";
+const tabbed: str = "left\tright";
+const quoted: str = "She said \"Elba\".";
+const windows_path: str = "C:\\Elba";
+const carriage_return: str = "left\rright";
+
+if (str_len(lines) != 17) {
+    println(int_to_str(1 / 0));
+}
+if (str_len(tabbed) != 10) {
+    println(int_to_str(1 / 0));
+}
+if (str_len(quoted) != 16) {
+    println(int_to_str(1 / 0));
+}
+if (str_len(windows_path) != 7) {
+    println(int_to_str(1 / 0));
+}
+if (str_len(carriage_return) != 10) {
+    println(int_to_str(1 / 0));
+}
+
+println(lines);
+println(tabbed);
+println(quoted);
+println(windows_path);

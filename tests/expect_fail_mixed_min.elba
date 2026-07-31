@@ -1,0 +1,2 @@
+// min and max require matching numeric representations.
+println(min(1, 2.5));

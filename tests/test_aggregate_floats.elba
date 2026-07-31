@@ -1,0 +1,50 @@
+struct Sample {
+    value: float;
+    readings: []float;
+
+    fn total(self: Sample) -> float {
+        return self.value + self.readings[0] + self.readings[1];
+    }
+}
+
+struct Box<T> {
+    value: T;
+
+    fn get(self: Box<T>) -> T {
+        return self.value;
+    }
+}
+
+struct Bucket<T> {
+    values: []T;
+}
+
+fn sum(values: []float) -> float {
+    let result: float = 0.0;
+    for (value in values) {
+        result = result + value;
+    }
+    return result;
+}
+
+fn first<T>(values: []T) -> T {
+    return values[0];
+}
+
+fn singleton<T>(value: T) -> []T {
+    return [value];
+}
+
+const sample: Sample = Sample { value: 1.5; readings: [2.5, 3.5] };
+println(float_to_str(sample.total()));
+println(float_to_str(sum(sample.readings)));
+
+const boxed: Box<float> = Box<float> { value: 4.25 };
+println(float_to_str(boxed.value + 0.75));
+println(float_to_str(boxed.get() + 1.75));
+
+const bucket: Bucket<float> = Bucket<float> { values: [1.25, 2.75] };
+println(float_to_str(bucket.values[0] + bucket.values[1]));
+println(float_to_str(first<float>(bucket.values) + 0.5));
+println(float_to_str(singleton<float>(7.25)[0]));
+println(first<str>(["generic"]));

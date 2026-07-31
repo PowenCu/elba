@@ -95,8 +95,10 @@ println("Test 7: Nested type aliases");
 type IntList = []int;
 type IntListArray = []IntList;
 
-// Note: This might not be fully supported yet
-// const nested: IntListArray = [[1, 2], [3, 4]];
+const nested: IntListArray = [[1, 2], [], [3, 4]];
+println(int_to_str(nested[0][1]));
+println(int_to_str(array_len(nested[1])));
+println(bool_to_str(nested is [][]int));
 
 // Test 8: Union type aliases
 println("");

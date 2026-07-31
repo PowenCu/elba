@@ -1,0 +1,2 @@
+// Conversion rejects non-finite results from float math.
+println(int_to_str(float_to_int(sqrt(-1.0))));

@@ -40,18 +40,8 @@ pub fn build(b: *std.Build) void {
     });
 
     // This configures the module to link against the LLVM libraries.
-    exe_mod.addSystemIncludePath(.{
-        .src_path = .{
-            .owner = b,
-            .sub_path = "C:/msys64/ucrt64/include"
-        }
-    });
-    exe_mod.addLibraryPath(.{
-        .src_path = .{
-            .owner = b,
-            .sub_path = "C:/msys64/ucrt64/bin"
-        }
-    });
+    exe_mod.addSystemIncludePath(.{ .src_path = .{ .owner = b, .sub_path = "C:/msys64/ucrt64/include" } });
+    exe_mod.addLibraryPath(.{ .src_path = .{ .owner = b, .sub_path = "C:/msys64/ucrt64/bin" } });
     exe_mod.link_libc = true;
     exe_mod.linkSystemLibrary("libLLVM-22", .{});
 
@@ -117,6 +107,18 @@ pub fn build(b: *std.Build) void {
 
     // const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
 
+    const frontend_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/frontend_tests.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const frontend_unit_tests = b.addTest(.{
+        .root_module = frontend_test_mod,
+    });
+    const run_frontend_unit_tests = b.addRunArtifact(frontend_unit_tests);
+    const frontend_test_step = b.step("test-frontend", "Run frontend unit tests");
+    frontend_test_step.dependOn(&run_frontend_unit_tests.step);
+
     const exe_unit_tests = b.addTest(.{
         .root_module = exe_mod,
     });
@@ -127,6 +129,6 @@ pub fn build(b: *std.Build) void {
     // the `zig build --help` menu, providing a way for the user to request
     // running the unit tests.
     const test_step = b.step("test", "Run unit tests");
-    // test_step.dependOn(&run_lib_unit_tests.step);
+    test_step.dependOn(&run_frontend_unit_tests.step);
     test_step.dependOn(&run_exe_unit_tests.step);
 }

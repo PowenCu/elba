@@ -1,0 +1,4 @@
+// Expected to fail at runtime in every backend.
+const values: []int = [1, 2, 3];
+const invalid: []int = array_slice(values, 1, 4);
+println(int_to_str(array_len(invalid)));

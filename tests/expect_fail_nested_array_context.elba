@@ -1,0 +1,2 @@
+const invalid: [][]int = [[1, 2], ["not", "integers"]];
+println(int_to_str(invalid[0][0]));

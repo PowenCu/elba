@@ -28,9 +28,9 @@ pub fn printValue(value: Value) void {
             }
             std.debug.print("}}", .{});
         },
-        .array => |elements| {
+        .array => |array_value| {
             std.debug.print("[", .{});
-            for (elements, 0..) |elem, i| {
+            for (array_value.elements, 0..) |elem, i| {
                 if (i > 0) std.debug.print(", ", .{});
                 printValue(elem);
             }

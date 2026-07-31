@@ -68,4 +68,22 @@ println(format_person("Bob", 30, "Seattle"));
 println(format_person("Charlie", 35, "Austin"));
 println("");
 
+// Escape sequences are decoded before interpretation or code generation.
+println("7. Escape sequences:");
+println("Quoted: \"Elba\"");
+println("Path: C:\\elba\\examples");
+println("Columns:\tleft\tright");
+println("Two lines:\nsecond line");
+println("");
+
+// Search, slicing, trimming, and sequence splitting.
+println("8. String helpers:");
+println(str_substring("compiler", 0, 4));
+println(str_trim("  clean text\t"));
+println(bool_to_str(str_contains("Elba language", "language")));
+const parts: []str = str_split("red--green--blue", "--");
+println(str_concat("Parts: ", int_to_str(array_len(parts))));
+println(str_concat(parts[0], str_concat(", ", str_concat(parts[1], str_concat(", ", parts[2])))));
+println("");
+
 println("=== String Operations Complete ===");

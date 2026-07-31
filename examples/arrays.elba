@@ -13,8 +13,15 @@ println(str_concat("Last number: ", int_to_str(numbers[4])));
 println(str_concat("First name: ", names[0]));
 println("");
 
+// Updating array elements (the array binding must be mutable)
+println("2. Array mutation:");
+let editable: []int = [10, 20, 30];
+editable[1] = 99;
+println(str_concat("Updated middle value: ", int_to_str(editable[1])));
+println("");
+
 // Array iteration with while loop
-println("2. Iterating through array:");
+println("3. Iterating through array:");
 let i: int = 0;
 while (i < 5) {
     println(str_concat("  numbers[", str_concat(int_to_str(i), str_concat("] = ", int_to_str(numbers[i])))));
@@ -23,7 +30,7 @@ while (i < 5) {
 println("");
 
 // Array operations
-println("3. Array calculations:");
+println("4. Array calculations:");
 let sum: int = 0;
 let j: int = 0;
 while (j < 5) {
@@ -32,6 +39,40 @@ while (j < 5) {
 }
 println(str_concat("Sum of array: ", int_to_str(sum)));
 println(str_concat("Average: ", int_to_str(sum / 5)));
+println("");
+
+// Functional array helpers return new arrays.
+println("5. Array helpers:");
+const extended: []int = array_push(numbers, 6);
+const shortened: []int = array_pop(extended);
+const middle: []int = array_slice(shortened, 1, 4);
+println(str_concat("Extended length: ", int_to_str(array_len(extended))));
+println(str_concat("Shortened length: ", int_to_str(array_len(shortened))));
+println(str_concat("Slice values: ", str_concat(int_to_str(middle[0]), str_concat(",", str_concat(int_to_str(middle[1]), str_concat(",", int_to_str(middle[2])))))));
+
+const more_names: []str = array_push(names, "Dana");
+println(str_concat("Added name: ", more_names[3]));
+
+// Empty literals use their declaration annotation as element-type context.
+const empty_numbers: []int = [];
+const one_number: []int = array_push(empty_numbers, 10);
+println(str_concat("Filled empty array: ", int_to_str(one_number[0])));
+const rows: [][]int = [[1, 2], [], [3]];
+const same_rows: [][]int = [[1, 2], [], [3]];
+println(str_concat("Nested empty row length: ", int_to_str(array_len(rows[1]))));
+println("");
+
+println("6. Structural equality:");
+const same_numbers: []int = [1, 2, 3, 4, 5];
+const changed_numbers: []int = [1, 2, 3, 4, 6];
+const shorter_numbers: []int = [1, 2, 3];
+println(bool_to_str(numbers == same_numbers));
+println(bool_to_str(numbers != changed_numbers));
+println(bool_to_str(numbers != shorter_numbers));
+
+const same_names: []str = [str_concat("Al", "ice"), "Bob", "Charlie"];
+println(bool_to_str(names == same_names));
+println(bool_to_str(rows == same_rows));
 println("");
 
 println("=== Arrays Complete ===");

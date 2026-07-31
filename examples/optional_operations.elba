@@ -1,0 +1,40 @@
+// Optional values support explicit unwrap and lazy null coalescing.
+
+println("=== Optional Operations ===");
+
+struct Point {
+    x: int;
+    y: int;
+}
+
+fn fallback_number() -> int {
+    println("evaluated fallback");
+    return 42;
+}
+
+let present: int? = 7;
+let absent: int? = null;
+
+println(int_to_str(present!));
+println(int_to_str(present ?? fallback_number()));
+println(int_to_str(absent ?? fallback_number()));
+
+let maybe_false: bool? = false;
+let maybe_empty: str? = "";
+println(bool_to_str(maybe_false!));
+println(str_concat("empty length: ", int_to_str(str_len(maybe_empty!))));
+println(bool_to_str(maybe_false ?? true));
+println(str_concat("coalesced empty length: ", int_to_str(str_len(maybe_empty ?? "fallback"))));
+println(int_to_str(null ?? 5));
+
+let maybe_point: Point? = Point { x: 3; y: 4 };
+println(int_to_str(maybe_point!.x));
+const default_point: Point = Point { x: 8; y: 9 };
+const chosen: Point = maybe_point ?? default_point;
+println(int_to_str(chosen.y));
+
+maybe_point = null;
+const fallback_point: Point = maybe_point ?? default_point;
+println(int_to_str(fallback_point.x));
+
+println("=== Optional Operations Complete ===");

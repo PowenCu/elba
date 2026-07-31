@@ -1,0 +1,8 @@
+const parts: []str = str_split("red--green--blue", "--");
+println(int_to_str(array_len(parts)));
+println(parts[0]);
+println(parts[1]);
+println(parts[2]);
+println(str_trim(" \ttrimmed\r\n"));
+println(str_substring("compiler", 0, 4));
+println(bool_to_str(str_contains("Elba language", "language")));

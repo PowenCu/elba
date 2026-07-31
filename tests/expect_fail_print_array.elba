@@ -1,0 +1,2 @@
+// Native backends intentionally expose scalar printing only.
+println([1, 2, 3]);

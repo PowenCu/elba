@@ -1,0 +1,74 @@
+// Scalar representations remain typed when loaded from arrays and structs.
+
+println("=== Aggregate Float Values ===");
+
+struct Measurement {
+    value: float;
+    samples: []float;
+
+    fn adjusted(self: Measurement, offset: float) -> float {
+        return self.value + offset;
+    }
+
+    fn first_sample(self: Measurement) -> float {
+        return self.samples[0];
+    }
+}
+
+struct Box<T> {
+    value: T;
+
+    fn get(self: Box<T>) -> T {
+        return self.value;
+    }
+}
+
+struct Bucket<T> {
+    values: []T;
+}
+
+fn make_samples() -> []float {
+    return [1.25, 2.75, 4.0];
+}
+
+fn sum_samples(samples: []float) -> float {
+    let total: float = 0.0;
+    for (sample in samples) {
+        total = total + sample;
+    }
+    return total;
+}
+
+fn first<T>(values: []T) -> T {
+    return values[0];
+}
+
+fn singleton<T>(value: T) -> []T {
+    return [value];
+}
+
+const measurement: Measurement = Measurement {
+    value: 5.5;
+    samples: make_samples()
+};
+
+println(float_to_str(measurement.value + 0.5));
+println(float_to_str(measurement.samples[1] * 2.0));
+println(float_to_str(measurement.adjusted(1.25)));
+println(float_to_str(measurement.first_sample()));
+println(float_to_str(sum_samples(measurement.samples)));
+
+const sliced: []float = array_slice(make_samples(), 0, 2);
+println(float_to_str(sliced[0] + sliced[1]));
+
+const boxed: Box<float> = Box<float> { value: 3.5 };
+println(float_to_str(boxed.value + 0.75));
+println(float_to_str(boxed.get() + 1.0));
+
+const bucket: Bucket<float> = Bucket<float> { values: [0.5, 1.5] };
+println(float_to_str(bucket.values[0] + bucket.values[1]));
+println(float_to_str(first<float>(bucket.values) + 0.25));
+println(float_to_str(singleton<float>(6.5)[0]));
+println(first<str>(["generic", "array"]));
+
+println("=== Aggregate Float Values Complete ===");

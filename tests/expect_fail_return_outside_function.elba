@@ -1,0 +1,2 @@
+// Expected to fail: return cannot be used at the top level.
+return;

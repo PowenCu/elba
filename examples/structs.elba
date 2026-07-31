@@ -17,13 +17,20 @@ println(str_concat("p1: (", str_concat(int_to_str(p1.x), str_concat(", ", str_co
 println(str_concat("p2: (", str_concat(int_to_str(p2.x), str_concat(", ", str_concat(int_to_str(p2.y), ")")))));
 println("");
 
+// Updating struct fields (the struct binding must be mutable)
+println("2. Updating struct fields:");
+let moving_point: Point = Point { x: 5; y: 8 };
+moving_point.x = 13;
+println(str_concat("moving_point.x = ", int_to_str(moving_point.x)));
+println("");
+
 // Struct with more fields
 struct Person {
     age: int;
     score: int;
 }
 
-println("2. Person struct:");
+println("3. Person struct:");
 const alice: Person = Person { age: 25; score: 95 };
 const bob: Person = Person { age: 30; score: 87 };
 
@@ -39,7 +46,7 @@ fn distance_from_origin(p: Point) -> int {
     abs_x + abs_y
 }
 
-println("3. Functions with structs:");
+println("4. Functions with structs:");
 const dist1: int = distance_from_origin(p1);
 const dist2: int = distance_from_origin(p2);
 println(str_concat("Distance of p1 from origin: ", int_to_str(dist1)));
@@ -52,6 +59,12 @@ struct Rectangle {
     height: int;
 }
 
+struct NamedPoint {
+    name: str;
+    point: Point;
+    samples: []int;
+}
+
 fn area(r: Rectangle) -> int {
     r.width * r.height
 }
@@ -60,12 +73,30 @@ fn perimeter(r: Rectangle) -> int {
     2 * (r.width + r.height)
 }
 
-println("4. Rectangle calculations:");
+println("5. Rectangle calculations:");
 const rect: Rectangle = Rectangle { width: 10; height: 5 };
 println(str_concat("Width: ", int_to_str(rect.width)));
 println(str_concat("Height: ", int_to_str(rect.height)));
 println(str_concat("Area: ", int_to_str(area(rect))));
 println(str_concat("Perimeter: ", int_to_str(perimeter(rect))));
+println("");
+
+println("6. Structural equality:");
+const p1_copy: Point = Point { x: 10; y: 20 };
+println(bool_to_str(p1 == p1_copy));
+println(bool_to_str(p1 != p2));
+
+const nested_left: NamedPoint = NamedPoint {
+    name: str_concat("ori", "gin");
+    point: Point { x: 0; y: 0 };
+    samples: [1, 2, 3];
+};
+const nested_right: NamedPoint = NamedPoint {
+    name: "origin";
+    point: Point { x: 0; y: 0 };
+    samples: [1, 2, 3];
+};
+println(bool_to_str(nested_left == nested_right));
 println("");
 
 println("=== Structs Complete ===");

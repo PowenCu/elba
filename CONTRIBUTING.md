@@ -28,7 +28,7 @@ We are committed to providing a welcoming and inspiring community for all. Pleas
 ### Prerequisites
 - Zig 0.15.2 or later
 - Git
-- (Optional) LLVM 20 for LLVM backend
+- LLVM 22 for the currently linked compiler backend
 - (Optional) GCC or Clang for C compilation
 
 ### Building from Source

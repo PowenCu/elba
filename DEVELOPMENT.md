@@ -83,6 +83,13 @@ zig build
 # Run all tests
 powershell -ExecutionPolicy Bypass -File "run_tests.ps1"
 
+# Run lexer and parser unit tests without linking LLVM
+zig build test-frontend
+
+# Verify successful examples and expected failures across every backend
+powershell -ExecutionPolicy Bypass -File "verify_examples.ps1"
+powershell -ExecutionPolicy Bypass -File "verify_failures.ps1"
+
 # Run tests with verbose output
 powershell -ExecutionPolicy Bypass -File "run_tests.ps1" -Verbose
 
@@ -123,6 +130,8 @@ pub const Stmt = union(enum) {
     fn_decl: struct { name: []const u8, parameters: []Parameter, body: *Expr, ... },
     struct_decl: struct { name: []const u8, fields: []FieldDecl, methods: []MethodDecl },
     return_stmt: *Expr,
+    break_stmt: void,
+    continue_stmt: void,
     expr_stmt: *Expr,
     // ... more statement types
 };
@@ -215,11 +224,11 @@ pub fn parseFile(path: []const u8) ![]Stmt {
 
 ## Known Issues and Limitations
 
-1. **No Garbage Collection**: Manual memory management required in Elba programs
+1. **Runtime Memory**: Interpreters own evaluated values; native generated programs currently use process-lifetime allocation tracking rather than tracing garbage collection
 2. **Error Handling**: No try-catch or Result types yet
 3. **Module System**: Simple file-based imports, no namespacing
 4. **Generic Constraints**: No trait bounds for generic types
-5. **LLVM Backend**: Some features (recursion, complex generics) may be unstable
+5. **LLVM Backend**: Complex control-flow joins and aggregate/generic runtime type metadata remain partial
 
 See `IMPROVEMENTS.md` for a detailed analysis of areas for improvement.
 

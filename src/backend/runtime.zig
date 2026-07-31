@@ -765,6 +765,7 @@ pub const Builtins = struct {
         const parsed = std.fmt.parseFloat(f64, args[0].data.string_val.toSlice()) catch {
             return error.InvalidArguments;
         };
+        if (!std.math.isFinite(parsed)) return error.InvalidArguments;
         return BoxedValue.initFloat(parsed);
     }
 
@@ -777,22 +778,33 @@ pub const Builtins = struct {
         return BoxedValue.initInt(@intCast(args[0].data.array_val.len));
     }
 
-    /// Push to array
+    /// Return a copy with one value appended
     pub fn arrayPush(ctx: *RuntimeContext, args: []const BoxedValue) !BoxedValue {
         if (args.len != 2 or args[0].tag != .array) {
             return error.InvalidArguments;
         }
-        try args[0].data.array_val.push(ctx.allocator, args[1]);
-        return BoxedValue.initNull();
+        const source = args[0].data.array_val;
+        const out = try ctx.createArray(source.element_type, source.len + 1);
+        for (source.data[0..source.len]) |value| {
+            try out.push(ctx.allocator, value);
+        }
+        try out.push(ctx.allocator, args[1]);
+        return BoxedValue.initArray(out);
     }
 
-    /// Pop from array
+    /// Return a copy without the final value
     pub fn arrayPop(ctx: *RuntimeContext, args: []const BoxedValue) !BoxedValue {
-        _ = ctx;
         if (args.len != 1 or args[0].tag != .array) {
             return error.InvalidArguments;
         }
-        return args[0].data.array_val.pop();
+        const source = args[0].data.array_val;
+        if (source.len == 0) return error.IndexOutOfBounds;
+
+        const out = try ctx.createArray(source.element_type, source.len - 1);
+        for (source.data[0 .. source.len - 1]) |value| {
+            try out.push(ctx.allocator, value);
+        }
+        return BoxedValue.initArray(out);
     }
 
     /// Return a copy of array[start..end]
@@ -826,7 +838,7 @@ pub const Builtins = struct {
         if (args.len != 1) return error.InvalidArguments;
 
         return switch (args[0].tag) {
-            .int => BoxedValue.initInt(if (args[0].data.int_val < 0) -args[0].data.int_val else args[0].data.int_val),
+            .int => if (args[0].data.int_val == std.math.minInt(i64)) return error.InvalidArguments else BoxedValue.initInt(if (args[0].data.int_val < 0) -args[0].data.int_val else args[0].data.int_val),
             .float => BoxedValue.initFloat(@abs(args[0].data.float_val)),
             else => error.InvalidArguments,
         };
@@ -906,7 +918,11 @@ pub const Builtins = struct {
     pub fn floatToInt(ctx: *RuntimeContext, args: []const BoxedValue) !BoxedValue {
         _ = ctx;
         if (args.len != 1 or args[0].tag != .float) return error.InvalidArguments;
-        return BoxedValue.initInt(@intFromFloat(args[0].data.float_val));
+        const value = args[0].data.float_val;
+        const lower: f64 = @floatFromInt(std.math.minInt(i64));
+        const upper = -lower;
+        if (!std.math.isFinite(value) or value < lower or value >= upper) return error.InvalidArguments;
+        return BoxedValue.initInt(@intFromFloat(value));
     }
 
     /// Type check (is)
@@ -1082,9 +1098,17 @@ test "Builtins array helpers" {
     try std.testing.expectEqual(TypeTag.int, len.tag);
     try std.testing.expectEqual(@as(i64, 2), len.data.int_val);
 
-    const popped = try Builtins.call(&ctx, "array_pop", &[_]BoxedValue{slice});
-    try std.testing.expectEqual(TypeTag.int, popped.tag);
-    try std.testing.expectEqual(@as(i64, 30), popped.data.int_val);
+    const pushed = try Builtins.call(&ctx, "array_push", &[_]BoxedValue{ slice, BoxedValue.initInt(40) });
+    try std.testing.expectEqual(TypeTag.array, pushed.tag);
+    try std.testing.expectEqual(@as(usize, 3), pushed.data.array_val.len);
+    try std.testing.expectEqual(@as(usize, 2), slice.data.array_val.len);
+    const pushed_last = try pushed.data.array_val.get(2);
+    try std.testing.expectEqual(@as(i64, 40), pushed_last.data.int_val);
+
+    const popped = try Builtins.call(&ctx, "array_pop", &[_]BoxedValue{pushed});
+    try std.testing.expectEqual(TypeTag.array, popped.tag);
+    try std.testing.expectEqual(@as(usize, 2), popped.data.array_val.len);
+    try std.testing.expectEqual(@as(usize, 3), pushed.data.array_val.len);
 }
 
 test "Builtins dispatcher and numeric conversions" {

@@ -70,7 +70,7 @@ println("5. Countdown (recursive):");
 fn countdown(n: int) {
     if (n <= 0) {
         println("Liftoff!");
-        return 0;
+        return;
     }
     println(int_to_str(n));
     countdown(n - 1);

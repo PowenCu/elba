@@ -1,0 +1,90 @@
+struct Maybe<T> {
+    value: T?;
+}
+
+struct Variant {
+    value: int | str;
+}
+
+struct Count {
+    value: int;
+}
+
+struct Label {
+    value: str;
+}
+
+fn pass_optional(value: int?) -> int? {
+    return value;
+}
+
+fn make_choice(value: str) -> int | str {
+    return value;
+}
+
+let zero: int? = 0;
+let another_zero: int? = pass_optional(0);
+println(bool_to_str(zero != null));
+println(bool_to_str(zero == another_zero));
+
+zero = null;
+println(bool_to_str(zero == null));
+
+let inferred = pass_optional(0);
+inferred = null;
+println(bool_to_str(inferred == null));
+
+let maybe_false: bool? = false;
+let maybe_zero_float: float? = 0.0;
+let maybe_empty: str? = "";
+println(bool_to_str(maybe_false != null));
+println(bool_to_str(maybe_zero_float != null));
+println(bool_to_str(maybe_empty != null));
+
+let generic_zero: Maybe<int> = Maybe<int> { value: 0 };
+println(bool_to_str(generic_zero.value != null));
+generic_zero.value = null;
+println(bool_to_str(generic_zero.value == null));
+
+let left: int | str = make_choice("same");
+let right: int | str = "same";
+println(bool_to_str(left is str));
+println(bool_to_str(left == right));
+
+left = 0;
+right = 0;
+println(bool_to_str(left is int));
+println(bool_to_str(left == right));
+
+let variant: Variant = Variant { value: 0 };
+println(bool_to_str(variant.value is int));
+variant.value = "variant";
+println(bool_to_str(variant.value is str));
+
+let aggregate: Count | Label = Count { value: 0 };
+let aggregate_copy: Count | Label = Count { value: 0 };
+println(bool_to_str(aggregate is Count));
+println(bool_to_str(aggregate is not Label));
+println(bool_to_str(aggregate == aggregate_copy));
+aggregate = Label { value: "zero" };
+aggregate_copy = Label { value: str_concat("ze", "ro") };
+println(bool_to_str(aggregate is Label));
+println(bool_to_str(aggregate is not Count));
+println(bool_to_str(aggregate == aggregate_copy));
+
+let optional_count: Count? = Count { value: 0 };
+let optional_count_copy: Count? = Count { value: 0 };
+println(bool_to_str(optional_count == optional_count_copy));
+optional_count_copy = null;
+println(bool_to_str(optional_count != optional_count_copy));
+
+let generic_variant: Maybe<int> | Maybe<str> = Maybe<int> { value: 0 };
+let generic_variant_copy: Maybe<int> | Maybe<str> = Maybe<int> { value: 0 };
+println(bool_to_str(generic_variant is Maybe<int>));
+println(bool_to_str(generic_variant is not Maybe<str>));
+println(bool_to_str(generic_variant == generic_variant_copy));
+generic_variant = Maybe<str> { value: "zero" };
+generic_variant_copy = Maybe<str> { value: str_concat("ze", "ro") };
+println(bool_to_str(generic_variant is Maybe<str>));
+println(bool_to_str(generic_variant is not Maybe<int>));
+println(bool_to_str(generic_variant == generic_variant_copy));

@@ -1,0 +1,2 @@
+// Parsed floats must be finite.
+println(float_to_str(str_to_float("nan")));

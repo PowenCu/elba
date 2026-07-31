@@ -1,0 +1,2 @@
+// Expected to fail with an unterminated-string diagnostic.
+const invalid: str = "Elba;

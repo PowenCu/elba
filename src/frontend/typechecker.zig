@@ -121,6 +121,8 @@ pub const TypeEnvironment = struct {
     allocated_fields: std.ArrayList([]FieldDecl),
     allocated_types: std.ArrayList(*Type), // For array element types
     parent: ?*TypeEnvironment,
+    loop_depth: usize,
+    expected_return_type: ?Type,
 
     pub fn init(allocator: std.mem.Allocator) TypeEnvironment {
         return .{
@@ -136,6 +138,8 @@ pub const TypeEnvironment = struct {
             .allocated_fields = std.ArrayList([]FieldDecl).initCapacity(allocator, 0) catch unreachable,
             .allocated_types = std.ArrayList(*Type).initCapacity(allocator, 0) catch unreachable,
             .parent = null,
+            .loop_depth = 0,
+            .expected_return_type = null,
         };
     }
 
@@ -153,6 +157,8 @@ pub const TypeEnvironment = struct {
             .allocated_fields = std.ArrayList([]FieldDecl).initCapacity(allocator, 0) catch unreachable,
             .allocated_types = std.ArrayList(*Type).initCapacity(allocator, 0) catch unreachable,
             .parent = parent,
+            .loop_depth = parent.loop_depth,
+            .expected_return_type = parent.expected_return_type,
         };
     }
 
@@ -458,7 +464,7 @@ fn substituteTypeAlloc(allocator: std.mem.Allocator, typ: Type, type_params: [][
             // Recursively substitute type arguments in the generic instance
             var new_args = try allocator.alloc(Type, inst.type_args.len);
             var any_changed = false;
-            
+
             for (inst.type_args, 0..) |arg, i| {
                 const substituted = try substituteTypeAlloc(allocator, arg, type_params, type_args, env);
                 new_args[i] = substituted;
@@ -466,7 +472,7 @@ fn substituteTypeAlloc(allocator: std.mem.Allocator, typ: Type, type_params: [][
                     any_changed = true;
                 }
             }
-            
+
             if (any_changed) {
                 try env.allocated_slices.append(env.allocator, new_args);
                 return Type{ .generic_instance = .{
@@ -482,17 +488,45 @@ fn substituteTypeAlloc(allocator: std.mem.Allocator, typ: Type, type_params: [][
     }
 }
 
+fn containsGenericType(typ: Type) bool {
+    return switch (typ) {
+        .generic_param => true,
+        .array => |inner| containsGenericType(inner.*),
+        .optional => |inner| containsGenericType(inner.*),
+        .generic_instance => |instance| blk: {
+            for (instance.type_args) |arg| {
+                if (containsGenericType(arg)) break :blk true;
+            }
+            break :blk false;
+        },
+        .union_type => |members| blk: {
+            for (members) |member| {
+                if (containsGenericType(member)) break :blk true;
+            }
+            break :blk false;
+        },
+        else => false,
+    };
+}
+
 // Check if a value type is compatible with a target type (including union types)
 fn isTypeCompatible(value_type: Type, target_type: Type) bool {
-    // Unknown type accepts anything (for builtins with generic params)
-    if (target_type == .unknown or value_type == .unknown) {
-        return true;
-    }
+    // Unknown targets are used by unconstrained builtin/generic parameters.
+    // An unknown value is the null literal and is accepted only by optionals.
+    if (target_type == .unknown) return true;
 
     // Direct match
     if (value_type.eql(target_type)) {
         return true;
     }
+
+    // Optional targets accept null and values compatible with their payload.
+    if (target_type == .optional) {
+        if (value_type == .unknown) return true;
+        return isTypeCompatible(value_type, target_type.optional.*);
+    }
+
+    if (value_type == .unknown) return false;
 
     // Check if target is a union type and value matches any constituent
     if (target_type == .union_type) {
@@ -515,14 +549,119 @@ fn isTypeCompatible(value_type: Type, target_type: Type) bool {
     return false;
 }
 
+fn checkArrayLiteralAgainstType(value: *const Expr, expected_type: Type, env: *TypeEnvironment) !void {
+    const elements = value.array_literal.elements;
+    const expected_element = expected_type.array.*;
+    value.array_literal.resolved_element_type.* = expected_element;
+    value.array_literal.resolved_array_type.* = expected_type;
+
+    for (elements, 0..) |element, index| {
+        if (element.* == .array_literal and expected_element == .array) {
+            try checkArrayLiteralAgainstType(element, expected_element, env);
+            continue;
+        }
+
+        const actual_type = try inferExpr(element, env);
+        if (!isTypeCompatible(actual_type, expected_element) and
+            !(expected_element == .float and actual_type == .int))
+        {
+            var expected_buf: [256]u8 = undefined;
+            var actual_buf: [256]u8 = undefined;
+            std.debug.print(
+                "Type error: Array element {d} expects '{s}' but got '{s}'\n",
+                .{ index, typeToString(expected_element, &expected_buf), typeToString(actual_type, &actual_buf) },
+            );
+            return error.TypeError;
+        }
+    }
+}
+
+fn contextualArrayType(expected_type: Type, env: *TypeEnvironment) ?Type {
+    const resolved = resolveTypeAlias(expected_type, env);
+    return switch (resolved) {
+        .array => resolved,
+        .optional => |inner| contextualArrayType(inner.*, env),
+        .union_type => |members| blk: {
+            var candidate: ?Type = null;
+            for (members) |member| {
+                if (contextualArrayType(member, env)) |array_type| {
+                    if (candidate != null and !candidate.?.eql(array_type)) break :blk null;
+                    candidate = array_type;
+                }
+            }
+            break :blk candidate;
+        },
+        else => null,
+    };
+}
+
+fn inferExprWithExpected(expr: *const Expr, expected_type: Type, env: *TypeEnvironment) !Type {
+    const resolved_expected = resolveTypeAlias(expected_type, env);
+    if (contextualArrayType(resolved_expected, env)) |array_expected| {
+        switch (expr.*) {
+            .array_literal => {
+                try checkArrayLiteralAgainstType(expr, array_expected, env);
+                return array_expected;
+            },
+            .block => |block| {
+                var scoped_env = TypeEnvironment.initScoped(env.allocator, env);
+                defer scoped_env.deinit();
+                for (block.statements) |*statement| try checkStmt(statement, &scoped_env);
+                if (block.return_expr) |return_expr| {
+                    return inferExprWithExpected(return_expr, resolved_expected, &scoped_env);
+                }
+                return .unit;
+            },
+            .if_expr => |if_expr| {
+                const condition_type = try inferExpr(if_expr.condition, env);
+                if (condition_type != .bool) {
+                    std.debug.print("Type error: If condition must be bool\n", .{});
+                    return error.TypeError;
+                }
+                const then_type = try inferExprWithExpected(if_expr.then_block, resolved_expected, env);
+                const else_block = if_expr.else_block orelse return .unit;
+                const else_type = try inferExprWithExpected(else_block, resolved_expected, env);
+                if (!isTypeCompatible(then_type, resolved_expected) or
+                    !isTypeCompatible(else_type, resolved_expected))
+                {
+                    std.debug.print("Type error: If branch does not satisfy the expected array-containing type\n", .{});
+                    return error.TypeError;
+                }
+                return resolved_expected;
+            },
+            .match_expr => |match_expr| {
+                const match_type = try inferExpr(match_expr.expr, env);
+                if (match_expr.arms.len == 0) return error.TypeError;
+                for (match_expr.arms) |arm| {
+                    try checkPatternType(arm.pattern, match_type);
+                    var arm_env = TypeEnvironment.initScoped(env.allocator, env);
+                    defer arm_env.deinit();
+                    if (arm.pattern == .variable) {
+                        try arm_env.set(arm.pattern.variable, .{ .typ = match_type, .mutable = false });
+                    }
+                    const arm_type = try inferExprWithExpected(arm.body, resolved_expected, &arm_env);
+                    if (!isTypeCompatible(arm_type, resolved_expected)) {
+                        std.debug.print("Type error: Match arm does not satisfy the expected array type\n", .{});
+                        return error.TypeError;
+                    }
+                }
+                try checkMatchExhaustiveness(match_expr, match_type, env.allocator);
+                return resolved_expected;
+            },
+            else => {},
+        }
+    }
+    return inferExpr(expr, env);
+}
+
 /// Helper to check variable declaration (const or let) with the same type checking logic
 fn checkVarDecl(name: []const u8, value: *const Expr, type_annotation: ?Type, mutable: bool, env: *TypeEnvironment) !void {
-    const value_type = try inferExpr(value, env);
-
     // If type annotation is provided, check it matches the value type
     if (type_annotation) |annotated_type| {
         // Resolve type alias
         const resolved_type = resolveTypeAlias(annotated_type, env);
+
+        const value_type = try inferExprWithExpected(value, resolved_type, env);
 
         // Allow null assignment to optional types
         if (value_type == .unknown and resolved_type == .optional) {
@@ -553,8 +692,42 @@ fn checkVarDecl(name: []const u8, value: *const Expr, type_annotation: ?Type, mu
         return error.TypeError;
     } else {
         // No type annotation, use inferred type
+        const value_type = try inferExpr(value, env);
         try env.set(name, .{ .typ = value_type, .mutable = mutable });
     }
+}
+
+fn statementAlwaysReturns(statement: Stmt) bool {
+    return switch (statement) {
+        .return_stmt => true,
+        .expr_stmt => |expr| expressionAlwaysReturns(expr),
+        else => false,
+    };
+}
+
+fn expressionAlwaysReturns(expr: *const Expr) bool {
+    return switch (expr.*) {
+        .block => |block| blk: {
+            for (block.statements) |statement| {
+                if (statementAlwaysReturns(statement)) break :blk true;
+            }
+            if (block.return_expr) |return_expr| {
+                break :blk expressionAlwaysReturns(return_expr);
+            }
+            break :blk false;
+        },
+        .if_expr => |if_expr| if_expr.else_block != null and
+            expressionAlwaysReturns(if_expr.then_block) and
+            expressionAlwaysReturns(if_expr.else_block.?),
+        .match_expr => |match_expr| blk: {
+            if (match_expr.arms.len == 0) break :blk false;
+            for (match_expr.arms) |arm| {
+                if (!expressionAlwaysReturns(arm.body)) break :blk false;
+            }
+            break :blk true;
+        },
+        else => false,
+    };
 }
 
 pub fn checkStmt(stmt: *const Stmt, env: *TypeEnvironment) error{ TypeError, UndefinedVariable, OutOfMemory }!void {
@@ -613,27 +786,17 @@ pub fn checkStmt(stmt: *const Stmt, env: *TypeEnvironment) error{ TypeError, Und
             // Type check function body in new scope with parameters
             var fn_env = TypeEnvironment.initScoped(env.allocator, env);
             defer fn_env.deinit();
+            // Function bodies cannot target a loop surrounding the declaration.
+            fn_env.loop_depth = 0;
+            fn_env.expected_return_type = resolved_return_type;
 
             for (decl.parameters, 0..) |param, i| {
                 try fn_env.set(param.name, .{ .typ = param_types[i], .mutable = false });
             }
 
-            const body_type = try inferExpr(decl.body, &fn_env);
+            const body_type = try inferExprWithExpected(decl.body, resolved_return_type, &fn_env);
 
-            // Check return type matches
-            // However, if the body is a block with return statements, those handle the return
-            const has_return_stmt = blk: {
-                if (decl.body.* == .block) {
-                    for (decl.body.block.statements) |block_stmt| {
-                        if (block_stmt == .return_stmt) {
-                            break :blk true;
-                        }
-                    }
-                }
-                break :blk false;
-            };
-
-            if (!has_return_stmt and !isTypeCompatible(body_type, resolved_return_type)) {
+            if (!isTypeCompatible(body_type, resolved_return_type) and !expressionAlwaysReturns(decl.body)) {
                 var buf1: [256]u8 = undefined;
                 var buf2: [256]u8 = undefined;
                 std.debug.print("Type error: Function '{s}' declared to return '{s}' but body returns '{s}'\n", .{ decl.name, typeToString(resolved_return_type, &buf1), typeToString(body_type, &buf2) });
@@ -706,26 +869,16 @@ pub fn checkStmt(stmt: *const Stmt, env: *TypeEnvironment) error{ TypeError, Und
                 // Type check method body in a scoped environment
                 var method_env = TypeEnvironment.initScoped(env.allocator, env);
                 defer method_env.deinit();
+                method_env.loop_depth = 0;
+                method_env.expected_return_type = method.return_type;
 
                 for (method.parameters) |param| {
                     try method_env.set(param.name, .{ .typ = param.typ, .mutable = false });
                 }
 
-                const body_type = try inferExpr(method.body, &method_env);
+                const body_type = try inferExprWithExpected(method.body, method.return_type, &method_env);
 
-                // Check return type matches
-                const has_return_stmt = blk: {
-                    if (method.body.* == .block) {
-                        for (method.body.block.statements) |block_stmt| {
-                            if (block_stmt == .return_stmt) {
-                                break :blk true;
-                            }
-                        }
-                    }
-                    break :blk false;
-                };
-
-                if (!has_return_stmt and !isTypeCompatible(body_type, method.return_type)) {
+                if (!isTypeCompatible(body_type, method.return_type) and !expressionAlwaysReturns(method.body)) {
                     var buf1: [256]u8 = undefined;
                     var buf2: [256]u8 = undefined;
                     std.debug.print("Type error: Method '{s}' declared to return '{s}' but body returns '{s}'\n", .{ method.name, typeToString(method.return_type, &buf1), typeToString(body_type, &buf2) });
@@ -741,13 +894,238 @@ pub fn checkStmt(stmt: *const Stmt, env: *TypeEnvironment) error{ TypeError, Und
                 });
             }
         },
-        .return_stmt => |expr| {
-            _ = try inferExpr(expr, env);
-            // Note: We'll need to track expected return type in a more sophisticated implementation
+        .return_stmt => |maybe_expr| {
+            const expected_type = env.expected_return_type orelse {
+                std.debug.print("Type error: 'return' can only be used inside a function or method\n", .{});
+                return error.TypeError;
+            };
+
+            if (maybe_expr) |expr| {
+                const actual_type = try inferExprWithExpected(expr, expected_type, env);
+                if (!isTypeCompatible(actual_type, expected_type)) {
+                    var expected_buf: [256]u8 = undefined;
+                    var actual_buf: [256]u8 = undefined;
+                    std.debug.print(
+                        "Type error: Return expects '{s}' but got '{s}'\n",
+                        .{ typeToString(expected_type, &expected_buf), typeToString(actual_type, &actual_buf) },
+                    );
+                    return error.TypeError;
+                }
+            } else if (expected_type != .unit) {
+                var expected_buf: [256]u8 = undefined;
+                std.debug.print("Type error: Bare return cannot satisfy return type '{s}'\n", .{typeToString(expected_type, &expected_buf)});
+                return error.TypeError;
+            }
+        },
+        .break_stmt => {
+            if (env.loop_depth == 0) {
+                std.debug.print("Type error: 'break' can only be used inside a loop\n", .{});
+                return error.TypeError;
+            }
+        },
+        .continue_stmt => {
+            if (env.loop_depth == 0) {
+                std.debug.print("Type error: 'continue' can only be used inside a loop\n", .{});
+                return error.TypeError;
+            }
         },
         .expr_stmt => |expr| {
             _ = try inferExpr(expr, env);
         },
+    }
+}
+
+fn assignmentRootName(expr: *const Expr) ?[]const u8 {
+    return switch (expr.*) {
+        .variable => |name| name,
+        .field_access => |access| assignmentRootName(access.object),
+        .array_access => |access| assignmentRootName(access.array),
+        else => null,
+    };
+}
+
+fn requireMutableTarget(expr: *const Expr, env: *TypeEnvironment) !void {
+    const name = assignmentRootName(expr) orelse {
+        std.debug.print("Type error: Assignment target is not backed by a variable\n", .{});
+        return error.TypeError;
+    };
+    const variable = env.get(name) orelse return error.UndefinedVariable;
+    if (!variable.mutable) {
+        std.debug.print("Type error: Cannot mutate const variable '{s}'\n", .{name});
+        return error.TypeError;
+    }
+}
+
+fn checkPatternType(pattern: Expr.Pattern, match_type: Type) !void {
+    switch (pattern) {
+        .wildcard, .variable => {},
+        .range => {
+            if (match_type != .int) {
+                std.debug.print("Type error: Range patterns can only match int values\n", .{});
+                return error.TypeError;
+            }
+        },
+        .literal => |literal| {
+            const literal_type: Type = switch (literal) {
+                .int => .int,
+                .float => .float,
+                .string => .string,
+                .bool => .bool,
+                .unit => .unit,
+                .null_value => .unknown,
+                .struct_instance, .array => return error.TypeError,
+            };
+            const null_matches = literal == .null_value and
+                (match_type == .optional or match_type == .unknown);
+            if (!null_matches and !isTypeCompatible(literal_type, match_type)) {
+                var literal_buf: [256]u8 = undefined;
+                var match_buf: [256]u8 = undefined;
+                std.debug.print(
+                    "Type error: Pattern type '{s}' cannot match value type '{s}'\n",
+                    .{ typeToString(literal_type, &literal_buf), typeToString(match_type, &match_buf) },
+                );
+                return error.TypeError;
+            }
+        },
+    }
+}
+
+const MatchInterval = struct {
+    start: i128,
+    end: i128,
+};
+
+fn patternInterval(pattern: Expr.Pattern) ?MatchInterval {
+    return switch (pattern) {
+        .literal => |literal| switch (literal) {
+            .int => |value| .{ .start = value, .end = value },
+            else => null,
+        },
+        .range => |range| blk: {
+            const start: i128 = range.start;
+            const end: i128 = if (range.inclusive) range.end else @as(i128, range.end) - 1;
+            break :blk if (start <= end) .{ .start = start, .end = end } else null;
+        },
+        else => null,
+    };
+}
+
+fn intervalLessThan(_: void, left: MatchInterval, right: MatchInterval) bool {
+    return left.start < right.start or (left.start == right.start and left.end < right.end);
+}
+
+fn intervalCovered(interval: MatchInterval, covered: []const MatchInterval) bool {
+    var cursor = interval.start;
+    for (covered) |item| {
+        if (item.end < cursor) continue;
+        if (item.start > cursor) return false;
+        cursor = item.end + 1;
+        if (cursor > interval.end) return true;
+    }
+    return false;
+}
+
+fn addCoveredInterval(covered: *std.ArrayList(MatchInterval), allocator: std.mem.Allocator, interval: MatchInterval) !void {
+    try covered.append(allocator, interval);
+    std.mem.sort(MatchInterval, covered.items, {}, intervalLessThan);
+    var merged_len: usize = 0;
+    for (covered.items) |item| {
+        if (merged_len == 0 or item.start > covered.items[merged_len - 1].end + 1) {
+            covered.items[merged_len] = item;
+            merged_len += 1;
+        } else if (item.end > covered.items[merged_len - 1].end) {
+            covered.items[merged_len - 1].end = item.end;
+        }
+    }
+    covered.shrinkRetainingCapacity(merged_len);
+}
+
+fn checkMatchExhaustiveness(match_expr: Expr.Match, match_type: Type, allocator: std.mem.Allocator) !void {
+    var intervals = try std.ArrayList(MatchInterval).initCapacity(allocator, match_expr.arms.len);
+    defer intervals.deinit(allocator);
+    var strings = std.StringHashMap(void).init(allocator);
+    defer strings.deinit();
+    var floats = std.AutoHashMap(u64, void).init(allocator);
+    defer floats.deinit();
+
+    var has_catch_all = false;
+    var has_true = false;
+    var has_false = false;
+    var has_null = false;
+    const integer_domain = MatchInterval{ .start = std.math.minInt(i64), .end = std.math.maxInt(i64) };
+
+    for (match_expr.arms, 0..) |arm, index| {
+        const domain_complete = has_catch_all or
+            (match_type == .bool and has_true and has_false) or
+            (match_type == .int and intervalCovered(integer_domain, intervals.items));
+        if (domain_complete) {
+            std.debug.print("Type error: Match arm {d} is unreachable because earlier patterns are exhaustive\n", .{index + 1});
+            return error.TypeError;
+        }
+
+        switch (arm.pattern) {
+            .wildcard, .variable => has_catch_all = true,
+            .range => {
+                const interval = patternInterval(arm.pattern) orelse {
+                    std.debug.print("Type error: Match arm {d} has an empty integer range\n", .{index + 1});
+                    return error.TypeError;
+                };
+                if (intervalCovered(interval, intervals.items)) {
+                    std.debug.print("Type error: Match arm {d} is already covered by earlier integer patterns\n", .{index + 1});
+                    return error.TypeError;
+                }
+                try addCoveredInterval(&intervals, allocator, interval);
+            },
+            .literal => |literal| switch (literal) {
+                .int => {
+                    const interval = patternInterval(arm.pattern).?;
+                    if (intervalCovered(interval, intervals.items)) {
+                        std.debug.print("Type error: Match arm {d} duplicates an earlier integer pattern\n", .{index + 1});
+                        return error.TypeError;
+                    }
+                    try addCoveredInterval(&intervals, allocator, interval);
+                },
+                .bool => |value| {
+                    const seen = if (value) has_true else has_false;
+                    if (seen) {
+                        std.debug.print("Type error: Match arm {d} duplicates an earlier boolean pattern\n", .{index + 1});
+                        return error.TypeError;
+                    }
+                    if (value) has_true = true else has_false = true;
+                },
+                .null_value => {
+                    if (has_null) {
+                        std.debug.print("Type error: Match arm {d} duplicates an earlier null pattern\n", .{index + 1});
+                        return error.TypeError;
+                    }
+                    has_null = true;
+                },
+                .string => |value| {
+                    if (strings.contains(value)) {
+                        std.debug.print("Type error: Match arm {d} duplicates an earlier string pattern\n", .{index + 1});
+                        return error.TypeError;
+                    }
+                    try strings.put(value, {});
+                },
+                .float => |value| {
+                    const bits: u64 = if (value == 0.0) 0 else @bitCast(value);
+                    if (floats.contains(bits)) {
+                        std.debug.print("Type error: Match arm {d} duplicates an earlier float pattern\n", .{index + 1});
+                        return error.TypeError;
+                    }
+                    try floats.put(bits, {});
+                },
+                .unit, .struct_instance, .array => {},
+            },
+        }
+    }
+
+    const exhaustive = has_catch_all or
+        (match_type == .bool and has_true and has_false) or
+        (match_type == .int and intervalCovered(integer_domain, intervals.items));
+    if (!exhaustive) {
+        std.debug.print("Type error: Match expression is not exhaustive; add a wildcard or variable arm\n", .{});
+        return error.TypeError;
     }
 }
 
@@ -758,8 +1136,8 @@ pub fn inferExpr(expr: *const Expr, env: *TypeEnvironment) error{ TypeError, Und
         .string_literal => return .string,
         .bool_literal => return .bool,
         .null_literal => {
-            // null has unknown type by itself, it needs context to determine its type
-            // For now, we'll return unknown and handle it in assignments/comparisons
+            // Null has no standalone payload type; expected-type positions
+            // restrict this internal marker to optionals.
             return .unknown;
         },
         .variable => |name| {
@@ -790,6 +1168,40 @@ pub fn inferExpr(expr: *const Expr, env: *TypeEnvironment) error{ TypeError, Und
                     return operand_type;
                 },
             }
+        },
+        .optional_unwrap => |optional_expr| {
+            const optional_type = try inferExpr(optional_expr, env);
+            return switch (optional_type) {
+                .optional => |inner| inner.*,
+                else => {
+                    var buf: [256]u8 = undefined;
+                    std.debug.print("Type error: Postfix '!' requires an optional value, got '{s}'\n", .{typeToString(optional_type, &buf)});
+                    return error.TypeError;
+                },
+            };
+        },
+        .optional_coalesce => |coalesce| {
+            const optional_type = try inferExpr(coalesce.optional, env);
+            const fallback_type = try inferExpr(coalesce.fallback, env);
+            if (optional_type == .unknown) return fallback_type;
+            const inner_type = switch (optional_type) {
+                .optional => |inner| inner.*,
+                else => {
+                    var buf: [256]u8 = undefined;
+                    std.debug.print("Type error: Left operand of '??' must be optional, got '{s}'\n", .{typeToString(optional_type, &buf)});
+                    return error.TypeError;
+                },
+            };
+            if (!isTypeCompatible(fallback_type, inner_type)) {
+                var expected_buf: [256]u8 = undefined;
+                var actual_buf: [256]u8 = undefined;
+                std.debug.print(
+                    "Type error: Fallback for '??' expects '{s}' but got '{s}'\n",
+                    .{ typeToString(inner_type, &expected_buf), typeToString(fallback_type, &actual_buf) },
+                );
+                return error.TypeError;
+            }
+            return inner_type;
         },
         .binary => |bin| {
             const left_type = try inferExpr(bin.left, env);
@@ -851,8 +1263,9 @@ pub fn inferExpr(expr: *const Expr, env: *TypeEnvironment) error{ TypeError, Und
                         switch (non_null_type) {
                             .optional => return .bool,
                             else => {
-                                // Could be a variable of optional type, allow it for now
-                                return .bool;
+                                var buf: [256]u8 = undefined;
+                                std.debug.print("Type error: Cannot compare null with non-optional type '{s}'\n", .{typeToString(non_null_type, &buf)});
+                                return error.TypeError;
                             },
                         }
                     }
@@ -946,7 +1359,10 @@ pub fn inferExpr(expr: *const Expr, env: *TypeEnvironment) error{ TypeError, Und
                 return error.TypeError;
             }
 
-            _ = try inferExpr(while_expr.body, env);
+            var loop_env = TypeEnvironment.initScoped(env.allocator, env);
+            defer loop_env.deinit();
+            loop_env.loop_depth = env.loop_depth + 1;
+            _ = try inferExpr(while_expr.body, &loop_env);
             return .unit;
         },
         .assignment => |assign| {
@@ -963,7 +1379,7 @@ pub fn inferExpr(expr: *const Expr, env: *TypeEnvironment) error{ TypeError, Und
             }
 
             // Check if value type matches variable type
-            const value_type = try inferExpr(assign.value, env);
+            const value_type = try inferExprWithExpected(assign.value, var_info.typ, env);
 
             // Allow null assignment to optional types
             if (value_type == .unknown and var_info.typ == .optional) {
@@ -993,6 +1409,124 @@ pub fn inferExpr(expr: *const Expr, env: *TypeEnvironment) error{ TypeError, Und
             return .unit;
         },
         .fn_call => |call| {
+            // Native backends preserve scalar call types in IR, so printing is
+            // intentionally limited to the scalar values every backend can
+            // render consistently.
+            if (std.mem.eql(u8, call.name, "print") or std.mem.eql(u8, call.name, "println")) {
+                if (call.arguments.len != 1) {
+                    std.debug.print("Type error: Function '{s}' expects 1 argument but got {d}\n", .{ call.name, call.arguments.len });
+                    return error.TypeError;
+                }
+                const argument_type = try inferExpr(call.arguments[0], env);
+                if (argument_type != .int and argument_type != .float and
+                    argument_type != .string and argument_type != .bool)
+                {
+                    var actual_buf: [256]u8 = undefined;
+                    std.debug.print(
+                        "Type error: Function '{s}' can print only int, float, str, or bool values, got '{s}'\n",
+                        .{ call.name, typeToString(argument_type, &actual_buf) },
+                    );
+                    return error.TypeError;
+                }
+                return .unit;
+            }
+
+            // Numeric helpers are overloaded, but only over a single concrete
+            // numeric type. Mixed min/max arguments would otherwise reach the
+            // runtime with ambiguous representations.
+            if (std.mem.eql(u8, call.name, "abs") or
+                std.mem.eql(u8, call.name, "min") or
+                std.mem.eql(u8, call.name, "max"))
+            {
+                const expected_count: usize = if (std.mem.eql(u8, call.name, "abs")) 1 else 2;
+                if (call.arguments.len != expected_count) {
+                    std.debug.print(
+                        "Type error: Function '{s}' expects {d} arguments but got {d}\n",
+                        .{ call.name, expected_count, call.arguments.len },
+                    );
+                    return error.TypeError;
+                }
+
+                const first_type = try inferExpr(call.arguments[0], env);
+                if (!first_type.isNumeric()) {
+                    var actual_buf: [256]u8 = undefined;
+                    std.debug.print(
+                        "Type error: Function '{s}' expects numeric arguments, got '{s}'\n",
+                        .{ call.name, typeToString(first_type, &actual_buf) },
+                    );
+                    return error.TypeError;
+                }
+
+                if (expected_count == 2) {
+                    const second_type = try inferExpr(call.arguments[1], env);
+                    if (!first_type.eql(second_type)) {
+                        var first_buf: [256]u8 = undefined;
+                        var second_buf: [256]u8 = undefined;
+                        std.debug.print(
+                            "Type error: Function '{s}' expects matching numeric types, got '{s}' and '{s}'\n",
+                            .{ call.name, typeToString(first_type, &first_buf), typeToString(second_type, &second_buf) },
+                        );
+                        return error.TypeError;
+                    }
+                }
+                return first_type;
+            }
+
+            // Array helpers have dependent types that cannot be represented by
+            // the simple builtin signature table. Preserve the input array type
+            // and validate its element/index arguments here.
+            if (std.mem.eql(u8, call.name, "array_len") or
+                std.mem.eql(u8, call.name, "array_push") or
+                std.mem.eql(u8, call.name, "array_pop") or
+                std.mem.eql(u8, call.name, "array_slice"))
+            {
+                const expected_count: usize = if (std.mem.eql(u8, call.name, "array_push"))
+                    2
+                else if (std.mem.eql(u8, call.name, "array_slice"))
+                    3
+                else
+                    1;
+                if (call.arguments.len != expected_count) {
+                    std.debug.print(
+                        "Type error: Function '{s}' expects {d} arguments but got {d}\n",
+                        .{ call.name, expected_count, call.arguments.len },
+                    );
+                    return error.TypeError;
+                }
+
+                const array_type = try inferExpr(call.arguments[0], env);
+                if (array_type != .array) {
+                    std.debug.print("Type error: Function '{s}' expects an array as its first argument\n", .{call.name});
+                    return error.TypeError;
+                }
+
+                if (std.mem.eql(u8, call.name, "array_len")) return .int;
+
+                if (std.mem.eql(u8, call.name, "array_push")) {
+                    const value_type = try inferExprWithExpected(call.arguments[1], array_type.array.*, env);
+                    if (!isTypeCompatible(value_type, array_type.array.*)) {
+                        var expected_buf: [256]u8 = undefined;
+                        var actual_buf: [256]u8 = undefined;
+                        std.debug.print(
+                            "Type error: array_push expects element type '{s}' but got '{s}'\n",
+                            .{ typeToString(array_type.array.*, &expected_buf), typeToString(value_type, &actual_buf) },
+                        );
+                        return error.TypeError;
+                    }
+                    return array_type;
+                }
+
+                if (std.mem.eql(u8, call.name, "array_slice")) {
+                    const start_type = try inferExpr(call.arguments[1], env);
+                    const end_type = try inferExpr(call.arguments[2], env);
+                    if (start_type != .int or end_type != .int) {
+                        std.debug.print("Type error: array_slice bounds must be int values\n", .{});
+                        return error.TypeError;
+                    }
+                }
+                return array_type;
+            }
+
             // Check if it's a generic function call with type arguments
             if (call.type_args.len > 0) {
                 // Look up generic template
@@ -1023,7 +1557,7 @@ pub fn inferExpr(expr: *const Expr, env: *TypeEnvironment) error{ TypeError, Und
                 }
 
                 for (call.arguments, 0..) |arg, i| {
-                    const arg_type = try inferExpr(arg, env);
+                    const arg_type = try inferExprWithExpected(arg, param_types[i], env);
                     // Use isTypeCompatible to allow passing values to union parameters
                     if (!isTypeCompatible(arg_type, param_types[i])) {
                         var buf1: [256]u8 = undefined;
@@ -1054,7 +1588,7 @@ pub fn inferExpr(expr: *const Expr, env: *TypeEnvironment) error{ TypeError, Und
 
             // Check argument types
             for (call.arguments, 0..) |arg, i| {
-                const arg_type = try inferExpr(arg, env);
+                const arg_type = try inferExprWithExpected(arg, signature.param_types[i], env);
                 // Use isTypeCompatible to allow passing values to union parameters
                 if (!isTypeCompatible(arg_type, signature.param_types[i])) {
                     var buf1: [256]u8 = undefined;
@@ -1099,7 +1633,7 @@ pub fn inferExpr(expr: *const Expr, env: *TypeEnvironment) error{ TypeError, Und
                         return error.TypeError;
                     }
 
-                    const actual_type = try inferExpr(field_init.value, env);
+                    const actual_type = try inferExprWithExpected(field_init.value, expected_type, env);
 
                     // Allow null assignment to optional fields
                     if (actual_type == .unknown and expected_type == .optional) {
@@ -1142,7 +1676,7 @@ pub fn inferExpr(expr: *const Expr, env: *TypeEnvironment) error{ TypeError, Und
                     return error.TypeError;
                 };
 
-                const actual_type = try inferExpr(field_init.value, env);
+                const actual_type = try inferExprWithExpected(field_init.value, expected_type, env);
 
                 // Allow null assignment to optional fields
                 if (actual_type == .unknown and expected_type == .optional) {
@@ -1249,8 +1783,8 @@ pub fn inferExpr(expr: *const Expr, env: *TypeEnvironment) error{ TypeError, Und
 
                     // Check argument types (skip index 0 which is 'self')
                     for (call.arguments, 0..) |arg, i| {
-                        const arg_type = try inferExpr(arg, env);
                         const expected_type = method.param_types[i + 1]; // +1 to skip 'self'
+                        const arg_type = try inferExprWithExpected(arg, expected_type, env);
                         // Use isTypeCompatible to allow passing values to union parameters
                         if (!isTypeCompatible(arg_type, expected_type)) {
                             var buf1: [256]u8 = undefined;
@@ -1293,9 +1827,9 @@ pub fn inferExpr(expr: *const Expr, env: *TypeEnvironment) error{ TypeError, Und
 
                     // Check argument types (skip index 0 which is 'self')
                     for (call.arguments, 0..) |arg, i| {
-                        const arg_type = try inferExpr(arg, env);
                         // Substitute type parameters in the expected parameter type
                         const expected_type = try substituteTypeAlloc(env.allocator, method.parameters[i + 1].typ, template.type_params, instance.type_args, env); // +1 to skip 'self'
+                        const arg_type = try inferExprWithExpected(arg, expected_type, env);
                         // Use isTypeCompatible to allow passing values to union parameters
                         if (!isTypeCompatible(arg_type, expected_type)) {
                             var buf1: [256]u8 = undefined;
@@ -1318,14 +1852,13 @@ pub fn inferExpr(expr: *const Expr, env: *TypeEnvironment) error{ TypeError, Und
         .array_literal => |literal| {
             // Array literals: [1, 2, 3]
             if (literal.elements.len == 0) {
-                // Empty array - we'll infer type from usage later
-                // For now, return unknown array type
-                std.debug.print("Type error: Empty array literals not yet supported\n", .{});
+                std.debug.print("Type error: Empty array literal requires an expected array type\n", .{});
                 return error.TypeError;
             }
 
             // Infer type from first element
             const first_type = try inferExpr(literal.elements[0], env);
+            literal.resolved_element_type.* = first_type;
 
             // Check that all elements have the same type
             for (literal.elements[1..], 1..) |elem, i| {
@@ -1343,7 +1876,9 @@ pub fn inferExpr(expr: *const Expr, env: *TypeEnvironment) error{ TypeError, Und
             elem_type_ptr.* = first_type;
             try env.allocated_types.append(env.allocator, elem_type_ptr);
 
-            return Type{ .array = elem_type_ptr };
+            const array_type = Type{ .array = elem_type_ptr };
+            literal.resolved_array_type.* = array_type;
+            return array_type;
         },
         .array_access => |access| {
             // Array indexing: arr[0]
@@ -1372,12 +1907,19 @@ pub fn inferExpr(expr: *const Expr, env: *TypeEnvironment) error{ TypeError, Und
         .is_check => |check| {
             // Type checking expression: x is int, x is not str
             // First, infer the type of the expression being checked
-            const expr_type = try inferExpr(check.expr, env);
+            const expr_type = resolveTypeAlias(try inferExpr(check.expr, env), env);
+            const checked_type = resolveTypeAlias(check.check_type, env);
+            check.resolved_type.* = checked_type;
+            check.resolved_source_type.* = expr_type;
 
-            // The result is always a bool
-            // We could validate that the check_type is compatible with expr_type,
-            // but for union types, any check is valid
-            _ = expr_type; // Suppress unused warning
+            // Ordinary statically typed values have an exact answer. Tagged
+            // optional/union values keep their payload check dynamic.
+            check.static_result.* = if (containsGenericType(expr_type) or containsGenericType(checked_type))
+                null
+            else switch (expr_type) {
+                .optional, .union_type, .unknown => null,
+                else => expr_type.eql(checked_type),
+            };
 
             return .bool;
         },
@@ -1388,6 +1930,7 @@ pub fn inferExpr(expr: *const Expr, env: *TypeEnvironment) error{ TypeError, Und
             // Create scoped environment for loop variable
             var scoped_env = TypeEnvironment.initScoped(env.allocator, env);
             defer scoped_env.deinit();
+            scoped_env.loop_depth = env.loop_depth + 1;
 
             if (for_expr.is_range) {
                 // Range-based for loop expects integer start and end bounds
@@ -1433,6 +1976,7 @@ pub fn inferExpr(expr: *const Expr, env: *TypeEnvironment) error{ TypeError, Und
 
             // Infer type from first arm
             const first_arm = match_expr.arms[0];
+            try checkPatternType(first_arm.pattern, match_type);
             var scoped_env = TypeEnvironment.initScoped(env.allocator, env);
             defer scoped_env.deinit();
 
@@ -1445,6 +1989,7 @@ pub fn inferExpr(expr: *const Expr, env: *TypeEnvironment) error{ TypeError, Und
 
             // Check all other arms return compatible type
             for (match_expr.arms[1..]) |arm| {
+                try checkPatternType(arm.pattern, match_type);
                 var arm_env = TypeEnvironment.initScoped(env.allocator, env);
                 defer arm_env.deinit();
 
@@ -1461,43 +2006,64 @@ pub fn inferExpr(expr: *const Expr, env: *TypeEnvironment) error{ TypeError, Und
                 }
             }
 
+            try checkMatchExhaustiveness(match_expr, match_type, env.allocator);
+
             return expected_type;
         },
         .field_assignment => |assign| {
+            try requireMutableTarget(assign.object, env);
+
             // Check object type
             const object_type = try inferExpr(assign.object, env);
-
-            // Must be a struct type
-            if (object_type != .user_type) {
-                std.debug.print("Type error: Cannot access field on non-struct type\n", .{});
-                return error.TypeError;
-            }
-
-            // Check value type matches field type
-            const value_type = try inferExpr(assign.value, env);
-
-            // Look up struct to validate field exists
-            const struct_def = env.getStruct(object_type.user_type);
-            if (struct_def) |def| {
-                // Check if field exists
-                const field_type = def.fields.get(assign.field_name);
-                if (field_type) |expected_type| {
-                    if (!isTypeCompatible(value_type, expected_type)) {
-                        var buf1: [256]u8 = undefined;
-                        var buf2: [256]u8 = undefined;
-                        std.debug.print("Type error: Field '{s}' expects '{s}' but got '{s}'\n", .{ assign.field_name, typeToString(expected_type, &buf1), typeToString(value_type, &buf2) });
+            const expected_type = switch (object_type) {
+                .user_type => |struct_name| blk: {
+                    const def = env.getStruct(struct_name) orelse {
+                        std.debug.print("Type error: Undefined struct '{s}'\n", .{struct_name});
+                        return error.UndefinedVariable;
+                    };
+                    break :blk def.fields.get(assign.field_name) orelse {
+                        std.debug.print("Type error: Struct '{s}' has no field '{s}'\n", .{ struct_name, assign.field_name });
                         return error.TypeError;
+                    };
+                },
+                .generic_instance => |instance| blk: {
+                    const template = env.getGenericStruct(instance.base_type) orelse {
+                        std.debug.print("Type error: Undefined generic struct '{s}'\n", .{instance.base_type});
+                        return error.UndefinedVariable;
+                    };
+                    var template_type: ?Type = null;
+                    for (template.fields) |field| {
+                        if (std.mem.eql(u8, field.name, assign.field_name)) {
+                            template_type = field.typ;
+                            break;
+                        }
                     }
-                } else {
-                    std.debug.print("Type error: Struct '{s}' has no field '{s}'\n", .{ object_type.user_type, assign.field_name });
+                    const field_type = template_type orelse {
+                        std.debug.print("Type error: Struct '{s}' has no field '{s}'\n", .{ instance.base_type, assign.field_name });
+                        return error.TypeError;
+                    };
+                    break :blk try substituteTypeAlloc(env.allocator, field_type, template.type_params, instance.type_args, env);
+                },
+                else => {
+                    std.debug.print("Type error: Cannot access field on non-struct type\n", .{});
                     return error.TypeError;
-                }
+                },
+            };
+
+            const value_type = try inferExprWithExpected(assign.value, expected_type, env);
+            if (!isTypeCompatible(value_type, expected_type)) {
+                var expected_buf: [256]u8 = undefined;
+                var actual_buf: [256]u8 = undefined;
+                std.debug.print("Type error: Field '{s}' expects '{s}' but got '{s}'\n", .{ assign.field_name, typeToString(expected_type, &expected_buf), typeToString(value_type, &actual_buf) });
+                return error.TypeError;
             }
 
             // Field assignment returns unit
             return .unit;
         },
         .array_assignment => |assign| {
+            try requireMutableTarget(assign.array, env);
+
             // Check array type
             const array_type = try inferExpr(assign.array, env);
             if (array_type != .array) {
@@ -1514,7 +2080,7 @@ pub fn inferExpr(expr: *const Expr, env: *TypeEnvironment) error{ TypeError, Und
 
             // Check value type matches element type
             const elem_type = array_type.array.*;
-            const value_type = try inferExpr(assign.value, env);
+            const value_type = try inferExprWithExpected(assign.value, elem_type, env);
             if (!isTypeCompatible(value_type, elem_type)) {
                 var buf1: [256]u8 = undefined;
                 var buf2: [256]u8 = undefined;

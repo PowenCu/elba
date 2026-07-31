@@ -1,0 +1,2 @@
+// Expected to fail at runtime in every backend.
+println(str_substring("Elba", 0, 5));

@@ -1,0 +1,16 @@
+type Integers = []int;
+
+const ints: Integers = [1, 2, 3];
+const strings: []str = ["1", "2", "3"];
+const empty_ints: []int = [];
+const nested: [][]int = [[1], [], [2, 3]];
+
+println(bool_to_str(ints is []int));
+println(bool_to_str(ints is Integers));
+println(bool_to_str(ints is not []str));
+println(bool_to_str(strings is []str));
+println(bool_to_str(strings is not []int));
+println(bool_to_str(empty_ints is []int));
+println(bool_to_str(empty_ints is not []str));
+println(bool_to_str(nested is [][]int));
+println(bool_to_str(nested is not [][]str));

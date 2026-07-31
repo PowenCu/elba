@@ -27,6 +27,8 @@ pub const Token = struct {
         bool_kw,
         fn_kw,
         return_kw,
+        break_kw,
+        continue_kw,
         struct_kw,
         is_kw,
         not_kw,
@@ -64,6 +66,8 @@ pub const Token = struct {
         dot,
         dot_dot,
         question,
+        question_question,
+        unterminated_string,
         invalid, // For lexer errors
     };
 
@@ -108,14 +112,36 @@ pub const Lexer = struct {
             // String literals
             if (c == '"') {
                 self.index += 1;
-                while (self.index < self.source.len and self.source[self.index] != '"') {
-                    self.index += 1;
+                while (self.index < self.source.len) {
+                    switch (self.source[self.index]) {
+                        '"' => {
+                            self.index += 1;
+                            return .{
+                                .tag = .string,
+                                .loc = .{ .start = start, .end = self.index },
+                            };
+                        },
+                        '\\' => {
+                            // Escaped characters cannot terminate the literal. Escape
+                            // validity is checked by the parser when it decodes the value.
+                            if (self.index + 1 >= self.source.len) {
+                                self.index = self.source.len;
+                                break;
+                            }
+
+                            const escaped = self.source[self.index + 1];
+                            if (escaped == '\n' or escaped == '\r') {
+                                break;
+                            }
+                            self.index += 2;
+                        },
+                        '\n', '\r' => break,
+                        else => self.index += 1,
+                    }
                 }
-                if (self.index < self.source.len) {
-                    self.index += 1; // Skip closing quote
-                }
+
                 return .{
-                    .tag = .string,
+                    .tag = .unterminated_string,
                     .loc = .{ .start = start, .end = self.index },
                 };
             }
@@ -185,6 +211,10 @@ pub const Lexer = struct {
                     .fn_kw
                 else if (std.mem.eql(u8, text, "return"))
                     .return_kw
+                else if (std.mem.eql(u8, text, "break"))
+                    .break_kw
+                else if (std.mem.eql(u8, text, "continue"))
+                    .continue_kw
                 else if (std.mem.eql(u8, text, "struct"))
                     .struct_kw
                 else if (std.mem.eql(u8, text, "is"))
@@ -287,7 +317,13 @@ pub const Lexer = struct {
                     }
                     break :blk .{ .tag = .dot, .loc = .{ .start = start, .end = self.index } };
                 },
-                '?' => .{ .tag = .question, .loc = .{ .start = start, .end = self.index } },
+                '?' => blk: {
+                    if (self.index < self.source.len and self.source[self.index] == '?') {
+                        self.index += 1;
+                        break :blk .{ .tag = .question_question, .loc = .{ .start = start, .end = self.index } };
+                    }
+                    break :blk .{ .tag = .question, .loc = .{ .start = start, .end = self.index } };
+                },
                 else => .{ .tag = .invalid, .loc = .{ .start = start, .end = self.index } },
             };
         }
@@ -298,3 +334,32 @@ pub const Lexer = struct {
         };
     }
 };
+
+test "lexer keeps escaped quotes inside string literals" {
+    const source = "\"She said \\\"Elba\\\".\";";
+    var lexer = Lexer.init(source);
+
+    const string_token = lexer.next();
+    try std.testing.expectEqual(Token.Tag.string, string_token.tag);
+    try std.testing.expectEqualStrings("\"She said \\\"Elba\\\".\"", source[string_token.loc.start..string_token.loc.end]);
+    try std.testing.expectEqual(Token.Tag.semicolon, lexer.next().tag);
+}
+
+test "lexer reports unterminated string literals" {
+    var eof_lexer = Lexer.init("\"missing end");
+    try std.testing.expectEqual(Token.Tag.unterminated_string, eof_lexer.next().tag);
+
+    var newline_lexer = Lexer.init("\"line one\nline two\"");
+    const token = newline_lexer.next();
+    try std.testing.expectEqual(Token.Tag.unterminated_string, token.tag);
+    try std.testing.expectEqualStrings("\"line one", newline_lexer.source[token.loc.start..token.loc.end]);
+}
+
+test "lexer distinguishes optional and coalescing question marks" {
+    var lexer = Lexer.init("int? value ?? fallback");
+    try std.testing.expectEqual(Token.Tag.int_kw, lexer.next().tag);
+    try std.testing.expectEqual(Token.Tag.question, lexer.next().tag);
+    try std.testing.expectEqual(Token.Tag.identifier, lexer.next().tag);
+    try std.testing.expectEqual(Token.Tag.question_question, lexer.next().tag);
+    try std.testing.expectEqual(Token.Tag.identifier, lexer.next().tag);
+}

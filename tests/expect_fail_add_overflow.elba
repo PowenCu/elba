@@ -1,0 +1,2 @@
+const maximum: int = str_to_int("9223372036854775807");
+println(int_to_str(maximum + 1));

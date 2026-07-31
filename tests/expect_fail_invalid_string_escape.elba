@@ -1,0 +1,2 @@
+// Expected to fail with an unsupported escape-sequence diagnostic.
+const invalid: str = "Elba\q";

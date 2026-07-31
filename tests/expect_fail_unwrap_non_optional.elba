@@ -1,0 +1,2 @@
+const value: int = 1;
+println(int_to_str(value!));

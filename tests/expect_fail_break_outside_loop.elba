@@ -1,0 +1,2 @@
+// Expected to fail: break cannot target a loop from the top level.
+break;

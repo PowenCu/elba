@@ -1,0 +1,3 @@
+// Empty literals require an array type annotation to supply the element type.
+const values = [];
+println(array_len(values));

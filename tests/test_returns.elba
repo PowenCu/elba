@@ -1,0 +1,14 @@
+fn finish() {
+    return;
+}
+
+fn choose(flag: bool) -> int {
+    if (flag) {
+        return 10;
+    } else {
+        return 20;
+    }
+}
+
+finish();
+println(int_to_str(choose(false)));

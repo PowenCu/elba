@@ -1,0 +1,4 @@
+// Expected to fail: a unit function cannot return an integer.
+fn unit_value() {
+    return 1;
+}
