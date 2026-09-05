@@ -1,5 +1,111 @@
 const std = @import("std");
 
+/// Locate the LLVM installation without hard-coded machine paths.
+///
+/// Resolution order:
+/// 1. `LLVM_INCLUDE_DIR` / `LLVM_LIB_DIR` environment variables (explicit override)
+/// 2. Well-known per-platform locations (MSYS2, Homebrew, system packages)
+///
+/// The library name varies by platform and packaging: Windows DLL import
+/// libraries are versioned (`libLLVM-22`), while Linux/macOS linkers resolve
+/// the unversioned `-lLLVM-22` or `-lLLVM` form.
+fn configureLLVM(b: *std.Build, exe_mod: *std.Build.Module) void {
+    const env_map = std.process.getEnvMap(b.allocator) catch |err| {
+        std.debug.print("warning: could not read environment ({s}); falling back to defaults\n", .{@errorName(err)});
+        return defaultLLVMLocation(b, exe_mod);
+    };
+    defer env_map.deinit(b.allocator);
+
+    const include_dir = env_map.get("LLVM_INCLUDE_DIR");
+    const lib_dir = env_map.get("LLVM_LIB_DIR");
+
+    if (include_dir != null or lib_dir != null) {
+        if (include_dir) |dir| {
+            exe_mod.addSystemIncludePath(.{ .cwd_relative = dir });
+        }
+        if (lib_dir) |dir| {
+            exe_mod.addLibraryPath(.{ .cwd_relative = dir });
+        }
+        exe_mod.link_libc = true;
+        exe_mod.linkSystemLibrary(llvmLibName(), .{});
+        return;
+    }
+
+    defaultLLVMLocation(b, exe_mod);
+}
+
+/// Try each well-known LLVM location until one exists on disk.
+fn defaultLLVMLocation(b: *std.Build, exe_mod: *std.Build.Module) void {
+    const candidates = llvmSearchPaths(b);
+
+    for (candidates) |candidate| {
+        var dir = std.fs.openDirAbsolute(candidate.prefix, .{}) catch continue;
+        dir.close();
+
+        if (candidate.include_sub) |sub| {
+            var inc = dir.openDir(sub, .{}) catch continue;
+            inc.close();
+            exe_mod.addSystemIncludePath(.{
+                .src_path = .{ .owner = b, .sub_path = candidate.include_rel },
+            });
+        }
+        exe_mod.addLibraryPath(.{
+            .src_path = .{ .owner = b, .sub_path = candidate.lib_rel },
+        });
+        exe_mod.link_libc = true;
+        exe_mod.linkSystemLibrary(candidate.lib_name, .{});
+        return;
+    }
+
+    // No known location found; still emit the link directive so the error
+    // message comes from the linker rather than silently skipping the backend.
+    std.debug.print(
+        \\warning: LLVM was not found in any well-known location.
+        \\  Set LLVM_INCLUDE_DIR and LLVM_LIB_DIR to your LLVM 22 install, e.g.:
+        \\    PowerShell: $env:LLVM_INCLUDE_DIR="C:\msys64\ucrt64\include"; $env:LLVM_LIB_DIR="C:\msys64\ucrt64\bin"
+        \\    POSIX:      export LLVM_INCLUDE_DIR=/usr/lib/llvm-22/include LLVM_LIB_DIR=/usr/lib/llvm-22/lib
+        \\
+    , .{});
+    exe_mod.link_libc = true;
+    exe_mod.linkSystemLibrary(llvmLibName(), .{});
+}
+
+const SearchCandidate = struct {
+    prefix: []const u8,
+    include_sub: ?[]const u8,
+    /// Path fragments relative to this file for Zig's src_path resolution.
+    include_rel: []const u8,
+    lib_rel: []const u8,
+    lib_name: []const u8,
+};
+
+fn llvmSearchPaths(b: *std.Build) []const SearchCandidate {
+    _ = b;
+    return switch (@import("builtin").os.tag) {
+        .windows => &[_]SearchCandidate{
+            .{ .prefix = "C:\\msys64\\ucrt64", .include_sub = "include", .include_rel = "C:/msys64/ucrt64/include", .lib_rel = "C:/msys64/ucrt64/bin", .lib_name = "libLLVM-22" },
+            .{ .prefix = "D:\\ThirdPartyTools\\msys64\\ucrt64", .include_sub = "include", .include_rel = "D:/ThirdPartyTools/msys64/ucrt64/include", .lib_rel = "D:/ThirdPartyTools/msys64/ucrt64/bin", .lib_name = "libLLVM-22" },
+            .{ .prefix = "C:\\Program Files\\LLVM", .include_sub = "include", .include_rel = "C:/Program Files/LLVM/include", .lib_rel = "C:/Program Files/LLVM/lib", .lib_name = "libLLVM" },
+        },
+        .macos => &[_]SearchCandidate{
+            .{ .prefix = "/opt/homebrew/opt/llvm", .include_sub = "include", .include_rel = "/opt/homebrew/opt/llvm/include", .lib_rel = "/opt/homebrew/opt/llvm/lib", .lib_name = "LLVM" },
+            .{ .prefix = "/usr/local/opt/llvm", .include_sub = "include", .include_rel = "/usr/local/opt/llvm/include", .lib_rel = "/usr/local/opt/llvm/lib", .lib_name = "LLVM" },
+        },
+        else => &[_]SearchCandidate{
+            .{ .prefix = "/usr/lib/llvm-22", .include_sub = "include", .include_rel = "/usr/lib/llvm-22/include", .lib_rel = "/usr/lib/llvm-22/lib", .lib_name = "LLVM-22" },
+            .{ .prefix = "/usr/lib/llvm", .include_sub = "include", .include_rel = "/usr/lib/llvm/include", .lib_rel = "/usr/lib/llvm/lib", .lib_name = "LLVM" },
+            .{ .prefix = "/usr", .include_sub = "include", .include_rel = "/usr/include", .lib_rel = "/usr/lib", .lib_name = "LLVM" },
+        },
+    };
+}
+
+fn llvmLibName() []const u8 {
+    return switch (@import("builtin").os.tag) {
+        .windows => "libLLVM-22",
+        else => "LLVM-22",
+    };
+}
+
 // Although this function looks imperative, note that its job is to
 // declaratively construct a build graph that will be executed by an external
 // runner.
@@ -40,8 +146,8 @@ pub fn build(b: *std.Build) void {
     });
 
     // This configures the module to link against the LLVM libraries.
-    exe_mod.addSystemIncludePath(.{ .src_path = .{ .owner = b, .sub_path = "C:/msys64/ucrt64/include" } });
-    exe_mod.addLibraryPath(.{ .src_path = .{ .owner = b, .sub_path = "C:/msys64/ucrt64/bin" } });
+    exe_mod.addSystemIncludePath(.{ .src_path = .{ .owner = b, .sub_path = "D:/ThirdPartyTools/msys64/ucrt64/include" } });
+    exe_mod.addLibraryPath(.{ .src_path = .{ .owner = b, .sub_path = "D:/ThirdPartyTools/msys64/ucrt64/bin" } });
     exe_mod.link_libc = true;
     exe_mod.linkSystemLibrary("libLLVM-22", .{});
 

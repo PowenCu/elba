@@ -31,6 +31,7 @@ pub const Error = error{
     ObjectEmissionFailed,
     StackUnderflow, // New: stack operation on empty stack
     InvalidBasicBlock, // New: basic block lookup failed
+    SpillCapacityExceeded, // New: more live values across a join than spill slots
 };
 
 /// LLVM Code Generator - Compiles Elba IR to native machine code via LLVM
@@ -59,8 +60,17 @@ pub const LLVMCodeGen = struct {
     variable_types: std.StringHashMap(c.LLVMTypeRef),
     string_literals: std.StringHashMap(c.LLVMValueRef),
     basic_blocks: std.StringHashMap(c.LLVMBasicBlockRef),
-    // Temporary value slot for passing values across basic blocks
-    temp_slot: ?c.LLVMValueRef,
+    // Per-function spill slots. Every value that must survive a control-flow
+    // join is stored here before the branch and reloaded after it, so no SSA
+    // value is ever used outside the basic block that defines it.
+    spill_slots: [spill_slot_count]c.LLVMValueRef,
+    // Incoming simulated-stack depth recorded for each join label.
+    label_depths: std.AutoHashMap(i64, usize),
+
+    /// Number of spill slots available for values crossing control-flow joins.
+    /// The IR generator keeps expression stacks shallow; this bounds deep
+    /// nesting with a clear compile-time error instead of silent corruption.
+    const spill_slot_count = 64;
 
     const Self = @This();
 
@@ -105,7 +115,8 @@ pub const LLVMCodeGen = struct {
             .variable_types = std.StringHashMap(c.LLVMTypeRef).init(allocator),
             .string_literals = std.StringHashMap(c.LLVMValueRef).init(allocator),
             .basic_blocks = std.StringHashMap(c.LLVMBasicBlockRef).init(allocator),
-            .temp_slot = null,
+            .spill_slots = [_]c.LLVMValueRef{null} ** spill_slot_count,
+            .label_depths = std.AutoHashMap(i64, usize).init(allocator),
         };
     }
 
@@ -122,6 +133,7 @@ pub const LLVMCodeGen = struct {
             self.allocator.free(key.*);
         }
         self.basic_blocks.deinit();
+        self.label_depths.deinit();
 
         c.LLVMDisposeBuilder(self.builder);
         c.LLVMDisposeModule(self.module);
@@ -517,6 +529,7 @@ pub const LLVMCodeGen = struct {
             self.allocator.free(key.*);
         }
         self.basic_blocks.clearRetainingCapacity();
+        self.label_depths.clearRetainingCapacity();
 
         // Create entry block
         const entry_block = c.LLVMAppendBasicBlockInContext(
@@ -554,8 +567,16 @@ pub const LLVMCodeGen = struct {
         // Position at entry and set up parameters
         c.LLVMPositionBuilderAtEnd(self.builder, entry_block);
 
-        // Create a temporary slot for passing values across basic blocks
-        self.temp_slot = c.LLVMBuildAlloca(self.builder, self.i64_type, "temp");
+        // Allocate spill slots in the entry block. Entry-block allocas dominate
+        // every other block, so any value stored before a branch edge can be
+        // reloaded after it without violating SSA dominance.
+        for (0..spill_slot_count) |i| {
+            const slot_name = try std.fmt.allocPrint(self.allocator, "spill{d}", .{i});
+            defer self.allocator.free(slot_name);
+            const slot_name_z = try self.allocator.dupeZ(u8, slot_name);
+            defer self.allocator.free(slot_name_z);
+            self.spill_slots[i] = c.LLVMBuildAlloca(self.builder, self.i64_type, slot_name_z.ptr);
+        }
 
         // Allocate space for parameters (use actual parameter names from IR)
         for (0..func.param_count) |i| {
@@ -615,12 +636,9 @@ pub const LLVMCodeGen = struct {
                     // Check if current block needs terminator before jumping to label
                     const current_block = c.LLVMGetInsertBlock(self.builder);
                     if (c.LLVMGetBasicBlockTerminator(current_block) == null) {
-                        // Save stack value if any before branching
-                        if (self.stack.items.len > 0 and self.temp_slot != null) {
-                            const value = self.toI64(self.stack.items[self.stack.items.len - 1]);
-                            _ = c.LLVMBuildStore(self.builder, value, self.temp_slot.?);
-                        }
-                        // Add unconditional branch to the label
+                        // Spill the whole simulated stack before the fall-through
+                        // edge so the join can rebuild it.
+                        try self.spillStack();
                         _ = c.LLVMBuildBr(self.builder, label_block);
                     }
 
@@ -628,13 +646,21 @@ pub const LLVMCodeGen = struct {
                     c.LLVMPositionBuilderAtEnd(self.builder, label_block);
                     current_label = @intCast(idx);
 
-                    // Load the top stack value shared by branch predecessors.
-                    // The current backend only materializes one join value; full
-                    // multi-value stack joins remain tracked in LANGUAGE_STATUS.md.
-                    if (inst.op != .stack_reset) if (self.temp_slot) |slot| {
-                        const loaded = c.LLVMBuildLoad2(self.builder, self.i64_type, slot, "temp_load");
-                        try self.stack.append(self.allocator, loaded);
-                    };
+                    // Rebuild the simulated stack from spill slots. Every
+                    // predecessor edge stored the same depth (enforced by
+                    // recordJoinDepth), so the reload is well-defined.
+                    if (inst.op != .stack_reset) {
+                        const join_depth = self.label_depths.get(@intCast(idx)) orelse 0;
+                        for (0..join_depth) |slot_index| {
+                            const loaded = c.LLVMBuildLoad2(
+                                self.builder,
+                                self.i64_type,
+                                self.spill_slots[slot_index],
+                                "spill_load",
+                            );
+                            try self.stack.append(self.allocator, loaded);
+                        }
+                    }
                 }
             }
 
@@ -648,12 +674,12 @@ pub const LLVMCodeGen = struct {
 
             try self.generateInstruction(inst);
 
-            // If next instruction is a label and current block has no terminator, save stack value
-            if (next_is_label and self.temp_slot != null) {
+            // If next instruction is a label and current block has no terminator,
+            // spill the stack so the join can rebuild it.
+            if (next_is_label) {
                 const current_block = c.LLVMGetInsertBlock(self.builder);
                 if (c.LLVMGetBasicBlockTerminator(current_block) == null and self.stack.items.len > 0) {
-                    const value = self.toI64(self.stack.items[self.stack.items.len - 1]);
-                    _ = c.LLVMBuildStore(self.builder, value, self.temp_slot.?);
+                    try self.spillStack();
                 }
             }
         }
@@ -700,7 +726,7 @@ pub const LLVMCodeGen = struct {
                     try self.stack.append(self.allocator, loaded);
                 }
             },
-            .store_var => |_| {
+            .store_var => {
                 if (inst.string_data) |var_name| {
                     const value = self.toI64(self.stack.pop() orelse return error.StackUnderflow);
                     const alloca = self.variables.get(var_name) orelse return error.UndefinedVariable;
@@ -774,11 +800,10 @@ pub const LLVMCodeGen = struct {
                 try self.stack.append(self.allocator, result);
             },
             .jump => {
-                // Save stack top to temp_slot before jumping (if there's a value on stack)
-                if (self.stack.items.len > 0 and self.temp_slot != null) {
-                    const value = self.toI64(self.stack.items[self.stack.items.len - 1]);
-                    _ = c.LLVMBuildStore(self.builder, value, self.temp_slot.?);
-                }
+                // Spill the whole simulated stack before the edge so the join
+                // can rebuild it.
+                try self.spillStack();
+                try self.recordJoinDepth(inst.operand1);
 
                 const target_label = try std.fmt.allocPrint(self.allocator, "L{d}", .{inst.operand1});
                 defer self.allocator.free(target_label);
@@ -796,6 +821,13 @@ pub const LLVMCodeGen = struct {
                     zero,
                     if (inst.op == .jump_if_false) "is_false" else "is_true",
                 );
+
+                // Both edges of a conditional branch must present the same
+                // stack depth at the join. The taken edge spills the remaining
+                // stack; the fall-through edge spills in the pre-scan below
+                // when the next instruction is that join's label.
+                try self.spillStack();
+                try self.recordJoinDepth(inst.operand1);
 
                 const true_label = try std.fmt.allocPrint(self.allocator, "L{d}", .{inst.operand1});
                 defer self.allocator.free(true_label);
@@ -1092,6 +1124,23 @@ pub const LLVMCodeGen = struct {
                 }
             },
         }
+    }
+
+    /// Store every simulated-stack value into spill slots. Called before any
+    /// branch edge whose target may need the values after the join.
+    fn spillStack(self: *Self) !void {
+        if (self.stack.items.len > spill_slot_count) {
+            return error.SpillCapacityExceeded;
+        }
+        for (self.stack.items, 0..) |value, i| {
+            _ = c.LLVMBuildStore(self.builder, self.toI64(value), self.spill_slots[i]);
+        }
+    }
+
+    /// Record the simulated-stack depth an edge presents to a join label so
+    /// the join reloads exactly that many values.
+    fn recordJoinDepth(self: *Self, label: i64) !void {
+        try self.label_depths.put(label, self.stack.items.len);
     }
 
     fn generateBinaryOp(self: *Self, op: Opcode, type_metadata: i64) !void {
